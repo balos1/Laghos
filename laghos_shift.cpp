@@ -52,12 +52,12 @@ double interfaceLS(const Vector &x)
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-   const int mode = 2;
+   const int mode = 0;
 
    const int dim = x.Size();
    switch (mode)
    {
-      case 0: return tanh(x(0) - 0.57);
+      case 0: return tanh(x(0) - 0.505);
       case 1: return tanh(x(0) - x(1));
       case 2:
       {

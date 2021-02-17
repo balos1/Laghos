@@ -265,14 +265,24 @@ void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes)
    }
 }
 
-PointExtractor::PointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf)
-   : g(gf), dof_id(-1)
+PointExtractor::PointExtractor(int z_id, Vector &xyz,
+                               const ParGridFunction &gf,
+                               std::string filename)
+   : g(gf), dof_id(-1), fstream(filename)
 {
    ParFiniteElementSpace &pfes = *gf.ParFESpace();
    MFEM_VERIFY(pfes.GetNRanks() == 1, "PointExtractor works only in serial.");
 
    dof_id = FindPointDOF(z_id, xyz, pfes);
    MFEM_VERIFY(dof_id > -1, "Wrong zone specification for extraction.");
+
+   fstream.precision(8);
+}
+
+void PointExtractor::WriteValue(double time)
+{
+   fstream << time << " " << g(dof_id) << "\n";
+   fstream.flush();
 }
 
 } // namespace hydrodynamics

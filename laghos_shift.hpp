@@ -57,6 +57,8 @@ void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes);
 class PointExtractor
 {
 private:
+   std::ofstream fstream;
+
    const ParGridFunction &g;
    // -1 if the point is not in the current MPI task.
    int dof_id;
@@ -64,9 +66,13 @@ private:
 public:
    // The assumption is that the point concides with one of the DOFs of the
    // input GridFunction's nodes.
-   PointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf);
+   PointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf,
+                  std::string filename);
+
+   ~PointExtractor() { fstream.close(); }
 
    double GetValue() const { return g(dof_id); }
+   void WriteValue(double time);
 };
 
 } // namespace hydrodynamics

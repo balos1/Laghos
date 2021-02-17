@@ -935,6 +935,16 @@ int main(int argc, char *argv[])
    //      }
    //      cout << endl;
    //   }
+
+   Vector point(1);
+   point(0) = 0.5;
+   hydrodynamics::PrintCellNumbers(point, H1FESpace);
+   hydrodynamics::PrintCellNumbers(point, L2FESpace);
+   hydrodynamics::PointExtractor v_extr(24, point, v_gf, "sod_v.out");
+   hydrodynamics::PointExtractor e_L_extr(24, point, e_gf, "sod_e_L.out");
+   hydrodynamics::PointExtractor e_R_extr(25, point, e_gf, "sod_e_R.out");
+   v_extr.WriteValue(0.0);
+
    for (int ti = 1; !last_step; ti++)
    {
       if (t + dt >= t_final)
@@ -948,7 +958,7 @@ int main(int argc, char *argv[])
       hydro.ResetTimeStepEstimate();
 
       // S is the vector of dofs, t is the current time, and dt is the time step
-      // to advance.
+      // to advance. The function does t += dt.
       ode_solver->Step(S, t, dt);
       steps++;
 
@@ -982,7 +992,11 @@ int main(int argc, char *argv[])
       // and the oper object might have redirected the mesh positions to those.
       pmesh->NewNodes(x_gf, false);
 
+      // Shifting-related procedures.
       dist_solver.ComputeVectorDistance(coeff_xi, dist);
+      v_extr.WriteValue(t);
+      e_L_extr.WriteValue(t);
+      e_R_extr.WriteValue(t);
 
       if (last_step || (ti % vis_steps) == 0)
       {

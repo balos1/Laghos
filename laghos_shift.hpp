@@ -52,6 +52,23 @@ private:
                            DenseMatrix &elmat);
 };
 
+void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes);
+
+class PointExtractor
+{
+private:
+   const ParGridFunction &g;
+   // -1 if the point is not in the current MPI task.
+   int dof_id;
+
+public:
+   // The assumption is that the point concides with one of the DOFs of the
+   // input GridFunction's nodes.
+   PointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf);
+
+   double GetValue() const { return g(dof_id); }
+};
+
 } // namespace hydrodynamics
 
 } // namespace mfem

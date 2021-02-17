@@ -454,6 +454,23 @@ int main(int argc, char *argv[])
          mesh = new Mesh(2);
          mesh->GetBdrElement(0)->SetAttribute(1);
          mesh->GetBdrElement(1)->SetAttribute(1);
+
+         /*
+         int n = 51;
+         mesh = new Mesh(n);
+         mesh->GetBdrElement(0)->SetAttribute(1);
+         mesh->GetBdrElement(1)->SetAttribute(1);
+
+         std::ostringstream mesh_name;
+         mesh_name << "sod_" << n << ".mesh";
+
+         std::ofstream mesh_ofs(mesh_name.str().c_str());
+         mesh_ofs.precision(8);
+         mesh->Print(mesh_ofs);
+         mesh_ofs.close();
+
+         MFEM_ABORT("mesh");
+         */
       }
       if (dim == 2)
       {

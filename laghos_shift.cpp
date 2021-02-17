@@ -221,6 +221,59 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    }
 }
 
+int FindPointDOF(const int z_id, const Vector &xyz,
+                 const ParFiniteElementSpace &pfes)
+{
+   const IntegrationRule &ir = pfes.GetFE(z_id)->GetNodes();
+   const int dofs_cnt = ir.GetNPoints(), dim = pfes.GetParMesh()->Dimension();
+   ElementTransformation &tr = *pfes.GetElementTransformation(z_id);
+   Vector position;
+   Array<int> dofs;
+   const double eps = 1e-8;
+   for (int j = 0; j < dofs_cnt; j++)
+   {
+      const IntegrationPoint &ip = ir.IntPoint(j);
+      tr.SetIntPoint(&ip);
+      tr.Transform(ip, position);
+      bool found = true;
+      for (int d = 0; d < dim; d++)
+      {
+         if (fabs(position(d) - xyz(d)) > eps) { found = false; break; }
+      }
+      if (found)
+      {
+         pfes.GetElementDofs(z_id, dofs);
+         return dofs[j];
+      }
+   }
+   return -1;
+}
+
+void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes)
+{
+   MFEM_VERIFY(pfes.GetNRanks() == 1, "PointExtractor works only in serial.");
+
+   const int NE = pfes.GetNE();
+   int dof_id;
+   for (int i = 0; i < NE; i++)
+   {
+      dof_id = FindPointDOF(i, xyz, pfes);
+      if (dof_id > 0)
+      {
+         std::cout << "Element " << i << "; Dof: " << dof_id << endl;
+      }
+   }
+}
+
+PointExtractor::PointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf)
+   : g(gf), dof_id(-1)
+{
+   ParFiniteElementSpace &pfes = *gf.ParFESpace();
+   MFEM_VERIFY(pfes.GetNRanks() == 1, "PointExtractor works only in serial.");
+
+   dof_id = FindPointDOF(z_id, xyz, pfes);
+   MFEM_VERIFY(dof_id > -1, "Wrong zone specification for extraction.");
+}
 
 } // namespace hydrodynamics
 

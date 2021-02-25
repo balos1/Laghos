@@ -75,6 +75,9 @@ public:
    void WriteValue(double time);
 };
 
+void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,
+                 ParGridFunction &e, ParGridFunction &gamma);
+
 } // namespace hydrodynamics
 
 } // namespace mfem

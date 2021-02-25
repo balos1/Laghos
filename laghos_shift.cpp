@@ -57,7 +57,7 @@ double interfaceLS(const Vector &x)
    const int dim = x.Size();
    switch (mode)
    {
-      case 0: return tanh(x(0) - 0.505);
+      case 0: return tanh(x(0) - 0.5);
       case 1: return tanh(x(0) - x(1));
       case 2:
       {
@@ -283,6 +283,35 @@ void PointExtractor::WriteValue(double time)
 {
    fstream << time << " " << g(dof_id) << "\n";
    fstream.flush();
+}
+
+void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,
+                 ParGridFunction &e, ParGridFunction &gamma)
+{
+   v = 0.0;
+
+   ParFiniteElementSpace &pfes = *rho.ParFESpace();
+   const int NE    = pfes.GetNE();
+   const int ndofs = rho.Size() / NE;
+   double r, g, p;
+   for (int i = 0; i < NE; i++)
+   {
+      if (pfes.GetParMesh()->GetAttribute(i) == 1)
+      {
+         r = 1.000; g = 2.0; p = 2.0;
+      }
+      else
+      {
+         r = 0.125; g = 1.4; p = 0.1;
+      }
+
+      gamma(i) = g;
+      for (int j = 0; j < ndofs; j++)
+      {
+         rho(i*ndofs + j) = r;
+         e(i*ndofs + j)   = p / r / (g - 1.0);
+      }
+   }
 }
 
 } // namespace hydrodynamics

@@ -786,9 +786,9 @@ int main(int argc, char *argv[])
    // gamma values are projected on function that's constant on the moving mesh.
    L2_FECollection mat_fec(0, pmesh->Dimension());
    ParFiniteElementSpace mat_fes(pmesh, &mat_fec);
-   ParGridFunction mat_gf(&mat_fes);
+   ParGridFunction gamma_gf(&mat_fes);
    FunctionCoefficient mat_coeff(gamma_func);
-   mat_gf.ProjectCoefficient(mat_coeff);
+   gamma_gf.ProjectCoefficient(mat_coeff);
 
    //
    // Shifted interface stuff.
@@ -811,6 +811,10 @@ int main(int argc, char *argv[])
    // Distance vector.
    ParGridFunction dist(&H1FESpace);
    VectorGridFunctionCoefficient dist_coeff(&dist);
+   // Set the initial condition based on the materials.
+   hydrodynamics::InitSod2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
+   v_gf.SyncAliasMemory(S);
+   e_gf.SyncAliasMemory(S);
 
    PLapDistanceSolver dist_solver(7);
    //HeatDistanceSolver dist_solver(2.0);
@@ -839,7 +843,7 @@ int main(int argc, char *argv[])
                                                 H1FESpace, PosFESpace,
                                                 L2FESpace, ess_tdofs,
                                                 rho0_coeff, rho0_gf,
-                                                mat_gf, dist_coeff, source, cfl,
+                                                gamma_gf, dist_coeff, source, cfl,
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q);
@@ -940,10 +944,12 @@ int main(int argc, char *argv[])
    point(0) = 0.5;
    hydrodynamics::PrintCellNumbers(point, H1FESpace);
    hydrodynamics::PrintCellNumbers(point, L2FESpace);
-   hydrodynamics::PointExtractor v_extr(24, point, v_gf, "sod_v.out");
-   hydrodynamics::PointExtractor e_L_extr(24, point, e_gf, "sod_e_L.out");
-   hydrodynamics::PointExtractor e_R_extr(25, point, e_gf, "sod_e_R.out");
+   hydrodynamics::PointExtractor v_extr(25, point, v_gf, "sod_v.out");
+   hydrodynamics::PointExtractor x_extr(25, point, x_gf, "sod_x.out");
+   //hydrodynamics::PointExtractor e_L_extr(24, point, e_gf, "sod_e_L.out");
+   //hydrodynamics::PointExtractor e_R_extr(25, point, e_gf, "sod_e_R.out");
    v_extr.WriteValue(0.0);
+   x_extr.WriteValue(0.0);
 
    for (int ti = 1; !last_step; ti++)
    {
@@ -995,8 +1001,9 @@ int main(int argc, char *argv[])
       // Shifting-related procedures.
       dist_solver.ComputeVectorDistance(coeff_xi, dist);
       v_extr.WriteValue(t);
-      e_L_extr.WriteValue(t);
-      e_R_extr.WriteValue(t);
+      x_extr.WriteValue(t);
+      //e_L_extr.WriteValue(t);
+      //e_R_extr.WriteValue(t);
 
       if (last_step || (ti % vis_steps) == 0)
       {

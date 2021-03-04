@@ -327,6 +327,7 @@ int main(int argc, char *argv[])
    // Parse command-line options.
    problem = 1;
    dim = 3;
+   int zones = 50;
    const char *mesh_file = "default";
    int rs_levels = 2;
    int rp_levels = 0;
@@ -360,6 +361,7 @@ int main(int argc, char *argv[])
 
    OptionsParser args(argc, argv);
    args.AddOption(&dim, "-dim", "--dimension", "Dimension of the problem.");
+   args.AddOption(&zones, "-z", "--zones_1d", "1D zones for problem 8.");
    args.AddOption(&mesh_file, "-m", "--mesh", "Mesh file to use.");
    args.AddOption(&rs_levels, "-rs", "--refine-serial",
                   "Number of times to refine the mesh uniformly in serial.");
@@ -451,26 +453,11 @@ int main(int argc, char *argv[])
    {
       if (dim == 1)
       {
-         mesh = new Mesh(2);
-         mesh->GetBdrElement(0)->SetAttribute(1);
-         mesh->GetBdrElement(1)->SetAttribute(1);
-
-         /*
-         int n = 51;
+         int n = 2;
+         if (problem == 8) { n = zones; }
          mesh = new Mesh(n);
          mesh->GetBdrElement(0)->SetAttribute(1);
          mesh->GetBdrElement(1)->SetAttribute(1);
-
-         std::ostringstream mesh_name;
-         mesh_name << "sod_" << n << ".mesh";
-
-         std::ofstream mesh_ofs(mesh_name.str().c_str());
-         mesh_ofs.precision(8);
-         mesh->Print(mesh_ofs);
-         mesh_ofs.close();
-
-         MFEM_ABORT("mesh");
-         */
       }
       if (dim == 2)
       {
@@ -801,18 +788,30 @@ int main(int argc, char *argv[])
    GridFunctionCoefficient coeff_xi(&xi);
    // Material marking and visualization function.
    ParGridFunction materials(&mat_fes);
+   int zone_id_L, zone_id_R;
    for (int i = 0; i < NE; i++)
    {
       int mat_id = hydrodynamics::material_id(i, xi);
       pmesh->SetAttribute(i, mat_id + 1);
       materials(i) = mat_id;
+      if (i > 0 && materials(i-1) == 0 && materials(i) == 1)
+      {
+         zone_id_L = i-1;
+         zone_id_R = i;
+      }
    }
    hydrodynamics::MarkFaceAttributes(*pmesh);
    // Distance vector.
    ParGridFunction dist(&H1FESpace);
    VectorGridFunctionCoefficient dist_coeff(&dist);
    // Set the initial condition based on the materials.
-   hydrodynamics::InitSod2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
+   Coefficient *rho_coeff = &rho0_coeff;
+   GridFunctionCoefficient rho_gf_coeff(&rho0_gf);
+   if (problem == 8)
+   {
+      hydrodynamics::InitSod2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
+      rho_coeff = &rho_gf_coeff;
+   }
    v_gf.SyncAliasMemory(S);
    e_gf.SyncAliasMemory(S);
 
@@ -842,7 +841,7 @@ int main(int argc, char *argv[])
    hydrodynamics::LagrangianHydroOperator hydro(S.Size(),
                                                 H1FESpace, PosFESpace,
                                                 L2FESpace, ess_tdofs,
-                                                rho0_coeff, rho0_gf,
+                                                *rho_coeff, rho0_gf,
                                                 gamma_gf, dist_coeff, source, cfl,
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
@@ -940,16 +939,34 @@ int main(int argc, char *argv[])
    //      cout << endl;
    //   }
 
-   Vector point(1);
-   point(0) = 0.5;
-   hydrodynamics::PrintCellNumbers(point, H1FESpace);
-   hydrodynamics::PrintCellNumbers(point, L2FESpace);
-   hydrodynamics::PointExtractor v_extr(25, point, v_gf, "sod_v.out");
-   hydrodynamics::PointExtractor x_extr(25, point, x_gf, "sod_x.out");
+   // Shifting - related extractors.
+   const double dx = 1.0 / NE;
+   ParGridFunction &p_gf = hydro.GetPressure(e_gf);
+   Vector point_interface(1), point_face(1);
+   point_interface(0) = 0.5;
+   point_face(0) = zone_id_R * dx;
+   hydrodynamics::PrintCellNumbers(point_interface, H1FESpace);
+   hydrodynamics::PrintCellNumbers(point_face, L2FESpace);
+   //MFEM_ABORT("numbers");
+   // By construction, the interface is in the left zone.
+   hydrodynamics::PointExtractor v_extr(zone_id_L, point_interface, v_gf, "sod_v.out");
+   hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, "sod_x.out");
    //hydrodynamics::PointExtractor e_L_extr(24, point, e_gf, "sod_e_L.out");
    //hydrodynamics::PointExtractor e_R_extr(25, point, e_gf, "sod_e_R.out");
+   //hydrodynamics::PointExtractor p_L_extr(24, point, p_gf, "sod_p_fit_L.out");
+   //hydrodynamics::PointExtractor p_R_extr(25, point, p_gf, "sod_p_fit_R.out");
+   hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, p_gf,
+                                                  dist, "sod_p_shift_L.out");
+   hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, p_gf,
+                                                  dist, "sod_p_shift_R.out");
    v_extr.WriteValue(0.0);
    x_extr.WriteValue(0.0);
+   //p_L_extr.WriteValue(0.0);
+   //p_R_extr.WriteValue(0.0);
+   p_LS_extr.WriteValue(0.0);
+   p_RS_extr.WriteValue(0.0);
+
+   std::cout << p_LS_extr.GetValue() << " " << p_RS_extr.GetValue() << std::endl;
 
    for (int ti = 1; !last_step; ti++)
    {
@@ -1004,6 +1021,10 @@ int main(int argc, char *argv[])
       x_extr.WriteValue(t);
       //e_L_extr.WriteValue(t);
       //e_R_extr.WriteValue(t);
+      //p_L_extr.WriteValue(t);
+      //p_R_extr.WriteValue(t);
+      p_LS_extr.WriteValue(t);
+      p_RS_extr.WriteValue(t);
 
       if (last_step || (ti % vis_steps) == 0)
       {

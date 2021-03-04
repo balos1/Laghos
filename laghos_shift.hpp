@@ -56,7 +56,7 @@ void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes);
 
 class PointExtractor
 {
-private:
+protected:
    std::ofstream fstream;
 
    const ParGridFunction &g;
@@ -71,8 +71,22 @@ public:
 
    ~PointExtractor() { fstream.close(); }
 
-   double GetValue() const { return g(dof_id); }
+   virtual double GetValue() const { return g(dof_id); }
    void WriteValue(double time);
+};
+
+class ShiftedPointExtractor : public PointExtractor
+{
+protected:
+   const ParGridFunction &dist;
+   int zone_id, dist_dof_id;
+
+public:
+   ShiftedPointExtractor(int z_id, Vector &xyz, const ParGridFunction &gf,
+                         const ParGridFunction &d, std::string filename);
+
+   virtual double GetValue() const;
+   void PrintDofId() const { std::cout << dof_id << std::endl; }
 };
 
 void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,

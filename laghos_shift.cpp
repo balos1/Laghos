@@ -41,7 +41,7 @@ int material_id(int el_id, const ParGridFunction &g)
       const IntegrationPoint &ip = ir.IntPoint(q);
       Tr->SetIntPoint(&ip);
       integral += ip.weight * g_vals(q) * Tr->Weight();
-      if (g_vals(q) < 0.0) { is_positive = false; }
+      if (g_vals(q) + 1e-12 < 0.0) { is_positive = false; }
    }
    return (is_positive) ? 1 : 0;
    //return (integral > 0.0) ? 1 : 0;
@@ -232,17 +232,18 @@ int FindPointDOF(const int z_id, const Vector &xyz,
    const double eps = 1e-8;
    for (int j = 0; j < dofs_cnt; j++)
    {
+      pfes.GetElementDofs(z_id, dofs);
       const IntegrationPoint &ip = ir.IntPoint(j);
       tr.SetIntPoint(&ip);
       tr.Transform(ip, position);
       bool found = true;
       for (int d = 0; d < dim; d++)
       {
+         //std::cout << dofs[j] << " " << position(d) << " " << xyz(d) << std::endl;
          if (fabs(position(d) - xyz(d)) > eps) { found = false; break; }
       }
       if (found)
       {
-         pfes.GetElementDofs(z_id, dofs);
          return dofs[j];
       }
    }
@@ -281,8 +282,62 @@ PointExtractor::PointExtractor(int z_id, Vector &xyz,
 
 void PointExtractor::WriteValue(double time)
 {
-   fstream << time << " " << g(dof_id) << "\n";
+   fstream << time << " " << GetValue() << "\n";
    fstream.flush();
+}
+
+ShiftedPointExtractor::ShiftedPointExtractor(int z_id, Vector &xyz,
+                                             const ParGridFunction &gf,
+                                             const ParGridFunction &d,
+                                             string filename)
+   : PointExtractor(z_id, xyz, gf, filename),
+     dist(d), zone_id(z_id), dist_dof_id(-1)
+{
+   ParFiniteElementSpace &pfes = *dist.ParFESpace();
+   MFEM_VERIFY(pfes.GetNRanks() == 1,
+               "ShiftedPointExtractor works only in serial.");
+
+   dist_dof_id = FindPointDOF(z_id, xyz, pfes);
+   MFEM_VERIFY(dist_dof_id > -1,
+               "Wrong zone specification for extraction (distance field).");
+}
+
+double ShiftedPointExtractor::GetValue() const
+{
+   ParFiniteElementSpace &pfes = *g.ParFESpace();
+   const FiniteElement &el = *pfes.GetFE(zone_id);
+   const int dim = el.GetDim();
+
+   // Gradient of the field at the point.
+   Array<int> dofs;
+   Vector g_e;
+   const int dof = el.GetDof();
+   DenseMatrix grad_e(dof, dim);
+   DenseMatrix grad_phys; // This will be (dof_p x dim, dof_p).
+   {
+      pfes.GetElementDofs(zone_id, dofs);
+      g.GetSubVector(dofs, g_e);
+      ElementTransformation &T = *pfes.GetElementTransformation(zone_id);
+      el.ProjectGrad(el, T, grad_phys);
+      Vector grad_ptr(grad_e.GetData(), dof*dim);
+      grad_phys.Mult(g_e, grad_ptr);
+   }
+   int loc_dof_id = -1;
+   for (int i = 0; i < dof; i++)
+   {
+      if (dofs[i] == dof_id) { loc_dof_id = i; break; }
+   }
+   MFEM_VERIFY(loc_dof_id >= 0, "Can't find the dof in the zone!");
+
+   double res = g(dof_id);
+   const int dsize = dist.Size();
+   for (int d = 0; d < dim; d++)
+   {
+      res += dist(dsize*d + dist_dof_id) * grad_e(loc_dof_id, d);
+   }
+
+   return res;
+
 }
 
 void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,

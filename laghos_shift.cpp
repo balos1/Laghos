@@ -52,7 +52,7 @@ double interfaceLS(const Vector &x)
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-   const int mode = 0;
+   const int mode = 2;
 
    const int dim = x.Size();
    switch (mode)
@@ -85,6 +85,26 @@ void MarkFaceAttributes(ParMesh &pmesh)
       {
          pmesh.SetFaceAttribute(f, 77);
       }
+   }
+}
+
+void GradAtLocalDofs(int zone_id, const ParGridFunction &g,
+                     DenseMatrix &grad_g)
+{
+   ParFiniteElementSpace &pfes = *g.ParFESpace();
+   const FiniteElement &el = *pfes.GetFE(zone_id);
+   const int dim = el.GetDim(), dof = el.GetDof();
+   grad_g.SetSize(dof, dim);
+   Array<int> dofs;
+   Vector g_e;
+   DenseMatrix grad_phys; // This will be (dof_p x dim, dof_p).
+   {
+      pfes.GetElementDofs(zone_id, dofs);
+      g.GetSubVector(dofs, g_e);
+      ElementTransformation &T = *pfes.GetElementTransformation(zone_id);
+      el.ProjectGrad(el, T, grad_phys);
+      Vector grad_ptr(grad_g.GetData(), dof*dim);
+      grad_phys.Mult(g_e, grad_ptr);
    }
 }
 
@@ -125,18 +145,12 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    const FiniteElement &el_p = *p.ParFESpace()->GetFE(0);
    const int dof_p = el_p.GetDof();
    DenseMatrix p_grad_e_1(dof_p, dim), p_grad_e_2(dof_p, dim);
+   GradAtLocalDofs(Trans.Elem1No, p, p_grad_e_1);
    DenseMatrix grad_phys; // This will be (dof_p x dim, dof_p).
-   {
-      p.ParFESpace()->GetElementDofs(Trans.Elem1No, dofs_p);
-      p.GetSubVector(dofs_p, p_e);
-      ElementTransformation &Tr_el1 = Trans.GetElement1Transformation();
-      el_p.ProjectGrad(el_p, Tr_el1, grad_phys);
-      Vector grad_ptr(p_grad_e_1.GetData(), dof_p*dim);
-      grad_phys.Mult(p_e, grad_ptr);
-   }
    if (Trans.Elem2No > 0)
    {
-      p.ParFESpace()->GetElementDofs(Trans.Elem1No, dofs_p);
+      //GradAtLocalDofs(Trans.Elem2No, p, p_grad_e_2);
+      p.ParFESpace()->GetElementDofs(Trans.Elem2No, dofs_p);
       p.GetSubVector(dofs_p, p_e);
       ElementTransformation &Tr_el2 = Trans.GetElement2Transformation();
       el_p.ProjectGrad(el_p, Tr_el2, grad_phys);
@@ -306,22 +320,14 @@ double ShiftedPointExtractor::GetValue() const
 {
    ParFiniteElementSpace &pfes = *g.ParFESpace();
    const FiniteElement &el = *pfes.GetFE(zone_id);
-   const int dim = el.GetDim();
+   const int dim = el.GetDim(), dof = el.GetDof();
 
    // Gradient of the field at the point.
+   DenseMatrix grad_e;
+   GradAtLocalDofs(zone_id, g, grad_e);
+
    Array<int> dofs;
-   Vector g_e;
-   const int dof = el.GetDof();
-   DenseMatrix grad_e(dof, dim);
-   DenseMatrix grad_phys; // This will be (dof_p x dim, dof_p).
-   {
-      pfes.GetElementDofs(zone_id, dofs);
-      g.GetSubVector(dofs, g_e);
-      ElementTransformation &T = *pfes.GetElementTransformation(zone_id);
-      el.ProjectGrad(el, T, grad_phys);
-      Vector grad_ptr(grad_e.GetData(), dof*dim);
-      grad_phys.Mult(g_e, grad_ptr);
-   }
+   pfes.GetElementDofs(zone_id, dofs);
    int loc_dof_id = -1;
    for (int i = 0; i < dof; i++)
    {

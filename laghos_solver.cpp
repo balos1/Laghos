@@ -95,6 +95,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
                                                  const Array<int> &ess_tdofs,
                                                  Coefficient &rho0_coeff,
                                                  ParGridFunction &rho0_gf,
+                                                 ParGridFunction &v_gf,
                                                  ParGridFunction &gamma_gf,
                                                  VectorCoefficient &dist_coeff,
                                                  const int source,
@@ -282,6 +283,11 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       // Interface forces.
       auto *ffi = new FaceForceIntegrator(p_func.GetPressure(), dist_coeff);
       FaceForce.AddTraceFaceIntegrator(ffi);
+
+      auto *efi = new EnergyInterfaceIntegrator(p_func.GetPressure(),
+                                                v_gf, dist_coeff);
+      Array<int> attr;
+      FaceForce_e.AddTraceFaceIntegrator(efi, attr);
 
       // Make a dummy assembly to figure out the sparsity.
       Force.Assemble(0);
@@ -481,6 +487,10 @@ void LagrangianHydroOperator::SolveEnergy(const Vector &S, const Vector &v,
       // This Force object is l2_dofs x h1_dofs (transpose of the paper one).
       Force.Mult(v, e_rhs);
       //FaceForce.AddMult(v, e_rhs, 1.0);
+
+      FaceForce_e.Assemble();
+      e_rhs += FaceForce_e;
+
       timer.sw_force.Stop();
       if (e_source) { e_rhs += *e_source; }
       Vector loc_rhs(l2dofs_cnt), loc_de(l2dofs_cnt);

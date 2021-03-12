@@ -114,6 +114,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                                              FaceElementTransformations &Trans,
                                              DenseMatrix &elmat)
 {
+   if (Trans.Attribute != 77) { return; }
+
    const int h1dofs_cnt_face = trial_face_fe.GetDof();
    const int l2dofs_cnt = test_fe1.GetDof();
    const int dim = test_fe1.GetDim();
@@ -127,8 +129,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt_face * dim);
    elmat = 0.0;
 
-   if (Trans.Attribute != 77) { return; }
-
    h1_shape_face.SetSize(h1dofs_cnt_face);
    l2_shape.SetSize(l2dofs_cnt);
 
@@ -136,8 +136,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
       test_fe1.GetOrder() + trial_face_fe.GetOrder() + Trans.OrderW();
    const IntegrationRule *ir = &IntRules.Get(Trans.GetGeometryType(), ir_order);
    const int nqp_face = ir->GetNPoints();
-
-   // d at all face quad points.
 
    // grad_p at all quad points, on both sides.
    Vector p_e;
@@ -229,6 +227,127 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                   elmat(l2dofs_cnt + i, d*h1dofs_cnt_face + j) -=
                         grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
                }
+            }
+         }
+      }
+   }
+}
+
+void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
+                                                    const FiniteElement &el_2,
+                                                    FaceElementTransformations &Trans,
+                                                    Vector &elvect)
+{
+   if (Trans.Attribute != 77) { return; }
+
+   const int l2dofs_cnt = el_1.GetDof();
+   const int dim = el_1.GetDim();
+
+   if (Trans.Elem2No < 0)
+   {
+      MFEM_ABORT("Energy term across boundaries - not implemented!");
+
+      // This case should take care of shared (MPI) faces. They will get
+      // processed by both MPI tasks.
+      elvect.SetSize(l2dofs_cnt);
+   }
+   elvect.SetSize(l2dofs_cnt * 2);
+   elvect = 0.0;
+
+   Vector l2_shape(l2dofs_cnt);
+
+   const int ir_order =
+      el_1.GetOrder() + Trans.OrderW();
+   const IntegrationRule *ir = &IntRules.Get(Trans.GetGeometryType(), ir_order);
+   const int nqp_face = ir->GetNPoints();
+
+   // grad_p at all quad points, on both sides.
+   Vector p_e;
+   Array<int> dofs_p;
+   const FiniteElement &el_p = *p.ParFESpace()->GetFE(0);
+   const int dof_p = el_p.GetDof();
+   DenseMatrix p_grad_e_1(dof_p, dim), p_grad_e_2(dof_p, dim);
+   GradAtLocalDofs(Trans.Elem1No, p, p_grad_e_1);
+   DenseMatrix grad_phys; // This will be (dof_p x dim, dof_p).
+   if (Trans.Elem2No > 0)
+   {
+      //GradAtLocalDofs(Trans.Elem2No, p, p_grad_e_2);
+      p.ParFESpace()->GetElementDofs(Trans.Elem2No, dofs_p);
+      p.GetSubVector(dofs_p, p_e);
+      ElementTransformation &Tr_el2 = Trans.GetElement2Transformation();
+      el_p.ProjectGrad(el_p, Tr_el2, grad_phys);
+      Vector grad_ptr(p_grad_e_2.GetData(), dof_p*dim);
+      grad_phys.Mult(p_e, grad_ptr);
+   }
+
+   Vector nor(dim);
+
+   Vector p_grad_q1(dim), p_grad_q2(dim), d_q1(dim), d_q2(dim),
+         shape_p(dof_p), v_vals(dim);
+   for (int q = 0; q  < nqp_face; q++)
+   {
+      const IntegrationPoint &ip_f = ir->IntPoint(q);
+
+      // Set the integration point in the face and the neighboring elements
+      Trans.SetAllIntPoints(&ip_f);
+
+      // Access the neighboring elements' integration points
+      // Note: eip2 will only contain valid data if Elem2 exists
+      const IntegrationPoint &ip_e1 = Trans.GetElement1IntPoint();
+      const IntegrationPoint &ip_e2 = Trans.GetElement2IntPoint();
+
+      // The normal includes the Jac scaling.
+      // The orientation is taken into account in the processing of element 1.
+      if (dim == 1)
+      {
+         nor(0) = (2*ip_e1.x - 1.0 ) * Trans.Weight();
+      }
+      else { CalcOrtho(Trans.Jacobian(), nor); }
+      nor *= ip_f.weight;
+
+      // 1st element stuff.
+      const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
+      dist.Eval(d_q1, Trans.GetElement1Transformation(), ip_e1);
+      el_p.CalcShape(ip_e1, shape_p);
+      p_grad_e_1.MultTranspose(shape_p, p_grad_q1);
+
+      // 2nd element stuff.
+      const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
+      dist.Eval(d_q2, Trans.GetElement2Transformation(), ip_e2);
+      el_p.CalcShape(ip_e2, shape_p);
+      p_grad_e_2.MultTranspose(shape_p, p_grad_q2);
+
+      v.GetVectorValue(Trans, ip_f, v_vals);
+      double p_jump_term = 0.0;
+      for  (int d = 0; d < dim; d++)
+      {
+         p_jump_term += (p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2) *
+                        nor(d) * v_vals(d);
+      }
+
+      // 1st element.
+      {
+         // L2 shape functions in the 1st element.
+         el_1.CalcShape(ip_e1, l2_shape);
+
+         for (int i = 0; i < l2dofs_cnt; i++)
+         {
+            for (int d = 0; d < dim; d++)
+            {
+               elvect(i) += 0.5 * l2_shape(i) * p_jump_term;
+            }
+         }
+      }
+      // 2nd element.
+      {
+         // L2 shape functions in the 2nd element.
+         el_2.CalcShape(ip_e2, l2_shape);
+
+         for (int i = 0; i < l2dofs_cnt; i++)
+         {
+            for (int d = 0; d < dim; d++)
+            {
+               elvect(i + l2dofs_cnt) += 0.5 * l2_shape(i) * p_jump_term;
             }
          }
       }

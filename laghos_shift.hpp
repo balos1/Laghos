@@ -52,6 +52,30 @@ private:
                            DenseMatrix &elmat);
 };
 
+class EnergyInterfaceIntegrator : public LinearFormIntegrator
+{
+private:
+   const ParGridFunction &p, &v;
+   VectorCoefficient &dist;
+
+public:
+   EnergyInterfaceIntegrator(const ParGridFunction &p_gf,
+                             const ParGridFunction &v_gf,
+                             VectorCoefficient &d)
+      : p(p_gf), v(v_gf), dist(d) { }
+
+   using LinearFormIntegrator::AssembleRHSElementVect;
+   virtual void AssembleRHSElementVect(const FiniteElement &el,
+                                       ElementTransformation &Trans,
+                                       Vector &elvect)
+   { MFEM_ABORT("should not be used"); }
+
+   virtual void AssembleRHSFaceVect(const FiniteElement &el_1,
+                                    const FiniteElement &el_2,
+                                    FaceElementTransformations &Trans,
+                                    Vector &elvect);
+};
+
 void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes);
 
 class PointExtractor

@@ -842,7 +842,7 @@ int main(int argc, char *argv[])
    hydrodynamics::LagrangianHydroOperator hydro(S.Size(),
                                                 H1FESpace, PosFESpace,
                                                 L2FESpace, ess_tdofs,
-                                                *rho_coeff, rho0_gf,
+                                                *rho_coeff, rho0_gf, v_gf,
                                                 gamma_gf, dist_coeff, source, cfl,
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,

@@ -171,6 +171,8 @@ protected:
    mutable ParGridFunction rhs_c_gf, dvc_gf;
    mutable Array<int> c_tdofs[3];
 
+   bool shift_v = false, shift_e = false;
+
    virtual void ComputeMaterialProperties(int nvalues, const double gamma[],
                                           const double rho[], const double e[],
                                           double p[], double cs[]) const
@@ -216,6 +218,12 @@ public:
    double GetTimeStepEstimate(const Vector &S) const;
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
+
+   void SetShiftingFlags(bool shift_vel, bool shift_en)
+   {
+      shift_v = shift_vel;
+      shift_e = shift_en;
+   }
 
    // The density values, which are stored only at some quadrature points,
    // are projected as a ParGridFunction.

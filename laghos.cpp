@@ -780,6 +780,15 @@ int main(int argc, char *argv[])
    //
    // Shifted interface stuff.
    //
+   const bool mix_mass = true;
+   const bool shift_v = true;
+   const bool shift_e = false;
+   const int nproc = mpi.WorldSize();
+   if (shift_e)
+   {
+      MFEM_VERIFY(nproc == 1, "The e term isn't parallel yet.");
+   }
+//#define EXTRACT_1D
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
    ParGridFunction xi(&pfes_xi);
@@ -810,8 +819,7 @@ int main(int argc, char *argv[])
    if (problem == 8)
    {
       hydrodynamics::InitSod2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
-      // The call below removes the density mixing from the mass matrices.
-      //rho_coeff = &rho_gf_coeff;
+      if (mix_mass == false) { rho_coeff = &rho_gf_coeff; }
    }
    v_gf.SyncAliasMemory(S);
    e_gf.SyncAliasMemory(S);
@@ -847,6 +855,7 @@ int main(int argc, char *argv[])
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q);
+   hydro.SetShiftingFlags(shift_v, shift_e);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
    char vishost[] = "localhost";
@@ -941,31 +950,35 @@ int main(int argc, char *argv[])
    //   }
 
    // Shifting - related extractors.
+#ifdef EXTRACT_1D
+   MFEM_VERIFY(nproc == 1, "Point extraction works inly in serial.");
    const double dx = 1.0 / NE;
    ParGridFunction &p_gf = hydro.GetPressure(e_gf);
    Vector point_interface(1), point_face(1);
    point_interface(0) = 0.5;
    point_face(0) = zone_id_R * dx;
-   //hydrodynamics::PrintCellNumbers(point_interface, H1FESpace);
-   //hydrodynamics::PrintCellNumbers(point_face, L2FESpace);
+   std::cout << zone_id_R << std::endl;
+   hydrodynamics::PrintCellNumbers(point_interface, H1FESpace);
+   hydrodynamics::PrintCellNumbers(point_face, L2FESpace);
    //MFEM_ABORT("numbers");
    // By construction, the interface is in the left zone.
-   //hydrodynamics::PointExtractor v_extr(zone_id_L, point_interface, v_gf, "sod_v.out");
-   //hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, "sod_x.out");
-   //hydrodynamics::PointExtractor e_L_extr(24, point, e_gf, "sod_e_L.out");
-   //hydrodynamics::PointExtractor e_R_extr(25, point, e_gf, "sod_e_R.out");
-   //hydrodynamics::PointExtractor p_L_extr(24, point, p_gf, "sod_p_fit_L.out");
-   //hydrodynamics::PointExtractor p_R_extr(25, point, p_gf, "sod_p_fit_R.out");
-   //hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, p_gf,
-   //                                               dist, "sod_p_shift_L.out");
-   //hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, p_gf,
-   //                                               dist, "sod_p_shift_R.out");
-   //v_extr.WriteValue(0.0);
-   //x_extr.WriteValue(0.0);
-   //p_L_extr.WriteValue(0.0);
-   //p_R_extr.WriteValue(0.0);
-   //p_LS_extr.WriteValue(0.0);
-   //p_RS_extr.WriteValue(0.0);
+   hydrodynamics::PointExtractor v_extr(zone_id_L, point_interface, v_gf, "sod_v.out");
+   hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, "sod_x.out");
+   hydrodynamics::PointExtractor e_L_extr(zone_id_L, point_face, e_gf, "sod_e_L.out");
+   hydrodynamics::PointExtractor e_R_extr(zone_id_R, point_face, e_gf, "sod_e_R.out");
+   hydrodynamics::PointExtractor p_L_extr(zone_id_L, point_face, p_gf, "sod_p_fit_L.out");
+   hydrodynamics::PointExtractor p_R_extr(zone_id_R, point_face, p_gf, "sod_p_fit_R.out");
+   hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, p_gf,
+                                                  dist, "sod_p_shift_L.out");
+   hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, p_gf,
+                                                  dist, "sod_p_shift_R.out");
+   v_extr.WriteValue(0.0);
+   x_extr.WriteValue(0.0);
+   p_L_extr.WriteValue(0.0);
+   p_R_extr.WriteValue(0.0);
+   p_LS_extr.WriteValue(0.0);
+   p_RS_extr.WriteValue(0.0);
+#endif
 
    for (int ti = 1; !last_step; ti++)
    {
@@ -1016,14 +1029,16 @@ int main(int argc, char *argv[])
 
       // Shifting-related procedures.
       dist_solver.ComputeVectorDistance(coeff_xi, dist);
-      //v_extr.WriteValue(t);
-      //x_extr.WriteValue(t);
-      //e_L_extr.WriteValue(t);
-      //e_R_extr.WriteValue(t);
-      //p_L_extr.WriteValue(t);
-      //p_R_extr.WriteValue(t);
-      //p_LS_extr.WriteValue(t);
-      //p_RS_extr.WriteValue(t);
+#ifdef EXTRACT_1D
+      v_extr.WriteValue(t);
+      x_extr.WriteValue(t);
+      e_L_extr.WriteValue(t);
+      e_R_extr.WriteValue(t);
+      p_L_extr.WriteValue(t);
+      p_R_extr.WriteValue(t);
+      p_LS_extr.WriteValue(t);
+      p_RS_extr.WriteValue(t);
+#endif
 
       if (last_step || (ti % vis_steps) == 0)
       {

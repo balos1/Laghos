@@ -52,7 +52,7 @@ double interfaceLS(const Vector &x)
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-   const int mode = 2;
+   const int mode = 0;
 
    const int dim = x.Size();
    switch (mode)
@@ -114,8 +114,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                                              FaceElementTransformations &Trans,
                                              DenseMatrix &elmat)
 {
-   if (Trans.Attribute != 77) { return; }
-
    const int h1dofs_cnt_face = trial_face_fe.GetDof();
    const int l2dofs_cnt = test_fe1.GetDof();
    const int dim = test_fe1.GetDim();
@@ -128,6 +126,9 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    }
    elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt_face * dim);
    elmat = 0.0;
+
+   // Must be done after elmat.SetSize().
+   if (Trans.Attribute != 77) { return; }
 
    h1_shape_face.SetSize(h1dofs_cnt_face);
    l2_shape.SetSize(l2dofs_cnt);
@@ -238,21 +239,20 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
                                                     FaceElementTransformations &Trans,
                                                     Vector &elvect)
 {
-   if (Trans.Attribute != 77) { return; }
-
    const int l2dofs_cnt = el_1.GetDof();
    const int dim = el_1.GetDim();
 
    if (Trans.Elem2No < 0)
    {
-      MFEM_ABORT("Energy term across boundaries - not implemented!");
-
       // This case should take care of shared (MPI) faces. They will get
       // processed by both MPI tasks.
       elvect.SetSize(l2dofs_cnt);
    }
    elvect.SetSize(l2dofs_cnt * 2);
    elvect = 0.0;
+
+   // Must be done after elvect.SetSize().
+   if (Trans.Attribute != 77) { return; }
 
    Vector l2_shape(l2dofs_cnt);
 
@@ -347,7 +347,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
          {
             for (int d = 0; d < dim; d++)
             {
-               elvect(i + l2dofs_cnt) += 0.5 * l2_shape(i) * p_jump_term;
+               elvect(i + l2dofs_cnt) -= 0.5 * l2_shape(i) * p_jump_term;
             }
          }
       }
@@ -408,7 +408,8 @@ PointExtractor::PointExtractor(int z_id, Vector &xyz,
    MFEM_VERIFY(pfes.GetNRanks() == 1, "PointExtractor works only in serial.");
 
    dof_id = FindPointDOF(z_id, xyz, pfes);
-   MFEM_VERIFY(dof_id > -1, "Wrong zone specification for extraction.");
+   MFEM_VERIFY(dof_id > -1,
+               "Wrong zone specification for extraction " << filename);
 
    fstream.precision(8);
 }

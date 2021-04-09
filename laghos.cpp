@@ -901,7 +901,7 @@ int main(int argc, char *argv[])
       hydrodynamics::VisualizeField(vis_dist, vishost, visport, dist,
                                     "Distances", 800, 400, Ww, Wh);
       hydrodynamics::VisualizeField(vis_mat, vishost, visport, materials,
-                                    "Materials", 0, 800, Ww, Wh);
+                                    "Materials", 0, 0, Ww, Wh);
    }
 
    // Save data for VisIt visualization.
@@ -1305,7 +1305,7 @@ void v0(const Vector &x, Vector &v)
             v(1) *= cos(M_PI*x(2));
             v(2) = 0.0;
          }
-         break;
+      break;
       case 1: v = 0.0; break;
       case 2: v = 0.0; break;
       case 3: v = 0.0; break;

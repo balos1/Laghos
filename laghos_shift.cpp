@@ -52,7 +52,7 @@ double interfaceLS(const Vector &x)
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-   const int mode = 1;
+   const int mode = 2;
 
    const int dim = x.Size();
    switch (mode)
@@ -420,9 +420,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           Vector v_grad_d(dim);
           v_strain_q1.Mult(d_q1, v_grad_d);
           Vector true_normal = d_q1;
-          double scale = 1.;
-          //if (true_normal * nor < 0) { scale = -1.; }
-          true_normal *= d_q1.Norml2() == 0. ? 0 : scale/d_q1.Norml2();
+          true_normal *= d_q1.Norml2() == 0. ? 0 : 1./d_q1.Norml2();
           double v_grad_d_n = v_grad_d*true_normal;
           Vector v_grad_d_n_n1 = true_normal;
           v_grad_d_n_n1 *= v_grad_d_n;
@@ -430,7 +428,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
 
           v_strain_q2.Mult(d_q2, v_grad_d);
           true_normal = d_q2;
-          true_normal *= d_q2.Norml2() == 0. ? 0 : scale/d_q2.Norml2();
+          true_normal *= d_q2.Norml2() == 0. ? 0 : 1./d_q2.Norml2();
           v_grad_d_n = v_grad_d*true_normal;
           Vector v_grad_d_n_n2 = true_normal;
           v_grad_d_n_n2 *= v_grad_d_n;

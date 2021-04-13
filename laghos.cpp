@@ -782,7 +782,7 @@ int main(int argc, char *argv[])
    //
    const bool mix_mass = true;
    const bool shift_v = true;
-   const bool shift_e = false;
+   const bool shift_e = true;
    const int nproc = mpi.WorldSize();
    if (shift_e)
    {

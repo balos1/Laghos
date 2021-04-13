@@ -297,6 +297,8 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       FaceForce.Assemble(0);
       FaceForce.Finalize(0);
 
+      //FaceForce_e.Assemble();
+
       VelocityInterfaceIntegrator *vfi =
             new VelocityInterfaceIntegrator(p_func.GetPressure());
       vfi->SetIntRule(&ir);

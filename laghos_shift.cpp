@@ -88,10 +88,10 @@ void MarkFaceAttributes(ParMesh &pmesh)
    }
 }
 
+
 void GradAtLocalDofs(ElementTransformation &T,
                      const ParGridFunction &g,
-                     DenseMatrix &grad_g)
-{
+                     DenseMatrix &grad_g){
    ParFiniteElementSpace &pfes = *g.ParFESpace();
    const FiniteElement &el = *pfes.GetFE(T.ElementNo);
    const int dim = el.GetDim(), dof = el.GetDof();
@@ -102,7 +102,6 @@ void GradAtLocalDofs(ElementTransformation &T,
    {
       pfes.GetElementDofs(T.ElementNo, dofs);
       g.GetSubVector(dofs, g_e);
-      //ElementTransformation &T = *pfes.GetElementTransformation(zone_id);
       el.ProjectGrad(el, T, grad_phys);
       Vector grad_ptr(grad_g.GetData(), dof*dim);
       grad_phys.Mult(g_e, grad_ptr);
@@ -110,7 +109,7 @@ void GradAtLocalDofs(ElementTransformation &T,
 }
 
 void StrainTensorAtLocalDofs(int zone_id, const ParGridFunction &g,
-                             DenseTensor &grad_g)
+                             DenseTensor &grad_g, ElementTransformation &T)
 {
    ParFiniteElementSpace &pfes = *g.ParFESpace();
    const FiniteElement &el = *pfes.GetFE(zone_id);
@@ -124,8 +123,6 @@ void StrainTensorAtLocalDofs(int zone_id, const ParGridFunction &g,
    {
       pfes.GetElementVDofs(zone_id, dofs);
       g.GetSubVector(dofs, g_e);
-
-      ElementTransformation &T = *pfes.GetElementTransformation(zone_id);
       el.ProjectGrad(el, T, grad_phys);
 
       for (int d = 0; d < dim; d++) {
@@ -206,22 +203,28 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
       // Shape functions on the face (H1); same for both elements.
       trial_face_fe.CalcShape(ip_f, h1_shape_face);
 
+      const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
+      const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
+
       double grad_p_d_jump = 0.;
+      DenseMatrix dshapephys;
+      Vector p_e;
       Vector grad_p_d_nor(dim);
+      Array<int> dofs;
       {
           el_p.CalcShape(ip_e1, shape_p);
           p_grad_e_1.MultTranspose(shape_p, p_grad_q);
           dist.Eval(d_q, Trans.GetElement1Transformation(), ip_e1);
-          Vector d_q_1 = d_q;
-          Vector p_grad_1 = p_grad_q;
+
           grad_p_d_jump = d_q * p_grad_q;
 
           el_p.CalcShape(ip_e2, shape_p);
           p_grad_e_2.MultTranspose(shape_p, p_grad_q);
           dist.Eval(d_q, Trans.GetElement2Transformation(), ip_e2);
+
           grad_p_d_jump -= d_q * p_grad_q;
           grad_p_d_nor = nor;
-          grad_p_d_nor *= -0.5*grad_p_d_jump;
+          grad_p_d_nor *= 0.5*grad_p_d_jump;
       }
 
       // 1st element.
@@ -242,8 +245,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                for (int d = 0; d < dim; d++)
                {
                   elmat(i, d*h1dofs_cnt_face + j)
-                        += grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
-                        //+= l2_shape(i) * h1_shape_face(j) * grad_p_d_nor(d);
+                        //+= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+                        += l2_shape(i) * h1_shape_face(j) * grad_p_d_nor(d);
                }
             }
          }
@@ -267,13 +270,14 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                for (int d = 0; d < dim; d++)
                {
                   elmat(l2dofs_cnt + i, d*h1dofs_cnt_face + j)
-                          -= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
-                          //+= l2_shape(i) * h1_shape_face(j) * grad_p_d_nor(d);
+                          //-= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+                          += l2_shape(i) * h1_shape_face(j) * grad_p_d_nor(d);
                }
             }
          }
       }
    }
+   //MFEM_ABORT(" ");
 }
 
 void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
@@ -324,9 +328,9 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
    DenseTensor v_strain_e_1(dof_v, dim, dim), v_strain_e_2(dof_v, dim, dim);
    if (Trans.Elem2No > 0)
    {
-       StrainTensorAtLocalDofs(Trans.Elem2No, v, v_strain_e_2);
+       StrainTensorAtLocalDofs(Trans.Elem2No, v, v_strain_e_2, Trans.GetElement2Transformation());
    }
-   StrainTensorAtLocalDofs(Trans.Elem1No, v, v_strain_e_1);
+   StrainTensorAtLocalDofs(Trans.Elem1No, v, v_strain_e_1, Trans.GetElement1Transformation());
 
    DenseMatrix v_strain_q1(dim), v_strain_q2(dim);
 
@@ -384,7 +388,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
       v.GetVectorValue(Trans, ip_f, v_vals);
       double p_jump_term = 0.0;
       p_jump_term = -0.5*(p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2) *
-                     (nor * v_vals); //0.5 for {{phi}} and 0.5 for two faces
+                     (nor * v_vals); //0.5 for {{phi}}
 
       // 1st element.
       {
@@ -395,6 +399,8 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
          {
              elvect(i) += l2_shape(i) * p_jump_term;
          }
+         //std::cout << " print1\n";
+         //elvect.Print();
       }
       // 2nd element.
       {
@@ -414,7 +420,9 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           Vector v_grad_d(dim);
           v_strain_q1.Mult(d_q1, v_grad_d);
           Vector true_normal = d_q1;
-          true_normal /= -d_q1.Norml2();
+          double scale = 1.;
+          //if (true_normal * nor < 0) { scale = -1.; }
+          true_normal *= d_q1.Norml2() == 0. ? 0 : scale/d_q1.Norml2();
           double v_grad_d_n = v_grad_d*true_normal;
           Vector v_grad_d_n_n1 = true_normal;
           v_grad_d_n_n1 *= v_grad_d_n;
@@ -422,7 +430,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
 
           v_strain_q2.Mult(d_q2, v_grad_d);
           true_normal = d_q2;
-          true_normal /= -d_q2.Norml2();
+          true_normal *= d_q2.Norml2() == 0. ? 0 : scale/d_q2.Norml2();
           v_grad_d_n = v_grad_d*true_normal;
           Vector v_grad_d_n_n2 = true_normal;
           v_grad_d_n_n2 *= v_grad_d_n;
@@ -438,15 +446,14 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
          el_1.CalcShape(ip_e1, l2_shape);
 
          Vector gradp_d_jump_dot_l2_shape_jump = l2_shape;
-         gradp_d_jump_dot_l2_shape_jump *= 0.5*gradp_d_jump;
+         gradp_d_jump_dot_l2_shape_jump *= gradp_d_jump;
          gradp_d_jump_dot_l2_shape_jump *= -0.25;
 
          Vector l2_shape_avg_p_avg = l2_shape;
          l2_shape_avg_p_avg *= 0.5;
          l2_shape_avg_p_avg *= p_avg;
          gradp_d_jump_dot_l2_shape_jump += l2_shape_avg_p_avg;
-         gradp_d_jump_dot_l2_shape_jump *= 0.5*v_grad_d_n_n_jump;
-
+         gradp_d_jump_dot_l2_shape_jump *= v_grad_d_n_n_jump;
          Vector elvect_temp(elvect.GetData(), l2dofs_cnt);
          elvect_temp.Add(1., gradp_d_jump_dot_l2_shape_jump);
       }
@@ -456,14 +463,14 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           el_2.CalcShape(ip_e2, l2_shape);
 
           Vector gradp_d_jump_dot_l2_shape_jump = l2_shape;
-          gradp_d_jump_dot_l2_shape_jump *= 0.5*gradp_d_jump;
-          gradp_d_jump_dot_l2_shape_jump *= -0.25;
+          gradp_d_jump_dot_l2_shape_jump *= gradp_d_jump;
+          gradp_d_jump_dot_l2_shape_jump *= 0.25;
 
           Vector l2_shape_avg_p_avg = l2_shape;
           l2_shape_avg_p_avg *= 0.5;
           l2_shape_avg_p_avg *= p_avg;
           gradp_d_jump_dot_l2_shape_jump += l2_shape_avg_p_avg;
-          gradp_d_jump_dot_l2_shape_jump *= 0.5*v_grad_d_n_n_jump;
+          gradp_d_jump_dot_l2_shape_jump *= v_grad_d_n_n_jump;
           Vector elvect_temp(elvect.GetData()+l2dofs_cnt, l2dofs_cnt);
           elvect_temp.Add(1., gradp_d_jump_dot_l2_shape_jump);
       }

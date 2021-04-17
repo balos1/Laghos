@@ -177,10 +177,22 @@ protected:
                                           const double rho[], const double e[],
                                           double p[], double cs[]) const
    {
+      double T;
       for (int v = 0; v < nvalues; v++)
       {
-         p[v]  = (gamma[v] - 1.0) * rho[v] * e[v];
-         cs[v] = sqrt(gamma[v] * (gamma[v]-1.0) * e[v]);
+         // Special case - stiffened gas;
+         // Assumes that gamma = 4.4 is used only in problem 9 [water-air] !!
+         if (fabs(gamma[v] - 4.4) < 1e-8)
+         {
+            p[v] = (gamma[v] - 1.0) * rho[v] * e[v] - gamma[v] * 6.0e8;
+            T    = std::max(p[v] / rho[v], 1e-3);
+         }
+         else
+         {
+            p[v] = (gamma[v] - 1.0) * rho[v] * e[v];
+            T    = (gamma[v] - 1.0) * e[v]; // T = p / rho
+         }
+         cs[v] = sqrt(gamma[v] * T);
       }
    }
 

@@ -116,8 +116,8 @@ public:
 void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,
                  ParGridFunction &e, ParGridFunction &gamma);
 
-void InitAirWater2Mat(ParGridFunction &rho, ParGridFunction &v,
-                      ParGridFunction &e, ParGridFunction &gamma);
+void InitWaterAir(ParGridFunction &rho, ParGridFunction &v,
+                  ParGridFunction &e, ParGridFunction &gamma);
 
 } // namespace hydrodynamics
 

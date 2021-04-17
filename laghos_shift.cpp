@@ -52,7 +52,8 @@ double interfaceLS(const Vector &x)
    // 0 - vertical - //sod
    // 1 - diagonal
    // 2 - circle
-   const int mode = 1;
+   // 3 - vertical at 0.7 (water-air test).
+   const int mode = 3;
 
    const int dim = x.Size();
    switch (mode)
@@ -70,7 +71,7 @@ double interfaceLS(const Vector &x)
          rad = sqrt(rad + 1e-16);
          return tanh(rad - 0.3);
       }
-      case 3: return tanh(x(0) - 0.7); //Airwater problem
+      case 3: return tanh(x(0) - 0.7);
       default: MFEM_ABORT("error"); return 0.0;
    }
 }
@@ -591,8 +592,8 @@ void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,
    }
 }
 
-void InitAirWater2Mat(ParGridFunction &rho, ParGridFunction &v,
-                 ParGridFunction &e, ParGridFunction &gamma)
+void InitWaterAir(ParGridFunction &rho, ParGridFunction &v,
+                  ParGridFunction &e, ParGridFunction &gamma)
 {
    v = 0.0;
 

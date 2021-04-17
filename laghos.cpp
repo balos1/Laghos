@@ -780,9 +780,10 @@ int main(int argc, char *argv[])
    //
    // Shifted interface stuff.
    //
-   const bool mix_mass = true;
-   const bool shift_v = true;
-   const bool shift_e = true;
+   const bool mix_mass = false;
+   const bool shift_v = false;
+   const bool shift_e = false;
+   const bool calc_dist = false;  // avoids slowdowns for the pure zone runs.
    const int nproc = mpi.WorldSize();
    if (shift_e)
    {
@@ -823,7 +824,7 @@ int main(int argc, char *argv[])
    }
    else if (problem == 9)
    {
-      hydrodynamics::InitAirWater2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
+      hydrodynamics::InitWaterAir(rho0_gf, v_gf, e_gf, gamma_gf);
       if (mix_mass == false) { rho_coeff = &rho_gf_coeff; }
    }
    v_gf.SyncAliasMemory(S);
@@ -833,7 +834,8 @@ int main(int argc, char *argv[])
    //HeatDistanceSolver dist_solver(2.0);
    //dist_solver.diffuse_iter = 1;
    dist_solver.print_level = 0;
-   dist_solver.ComputeVectorDistance(coeff_xi, dist);
+   if (calc_dist) { dist_solver.ComputeVectorDistance(coeff_xi, dist); }
+   else           { dist = 0.0; }
 
    // Additional details, depending on the problem.
    int source = 0; bool visc = true, vorticity = false;
@@ -1010,7 +1012,7 @@ int main(int argc, char *argv[])
          // Repeat (solve again) with a decreased time step - decrease of the
          // time estimate suggests appearance of oscillations.
          dt *= 0.85;
-         if (dt < 1e-6)
+         if (dt < 1e-7)
          { MFEM_ABORT("The time step crashed!"); }
          t = t_old;
          S = S_old;
@@ -1034,7 +1036,7 @@ int main(int argc, char *argv[])
       pmesh->NewNodes(x_gf, false);
 
       // Shifting-related procedures.
-      dist_solver.ComputeVectorDistance(coeff_xi, dist);
+      if (calc_dist) { dist_solver.ComputeVectorDistance(coeff_xi, dist); }
 #ifdef EXTRACT_1D
       v_extr.WriteValue(t);
       x_extr.WriteValue(t);

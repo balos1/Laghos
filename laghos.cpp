@@ -783,7 +783,7 @@ int main(int argc, char *argv[])
    const bool mix_mass = false;
    const bool shift_v = false;
    const bool shift_e = false;
-   const bool calc_dist = false;  // avoids slowdowns for the pure zone runs.
+   const bool calc_dist = true;  // avoids slowdowns for the pure zone runs.
    const int nproc = mpi.WorldSize();
    if (shift_e)
    {
@@ -793,7 +793,7 @@ int main(int argc, char *argv[])
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
    ParGridFunction xi(&pfes_xi);
-   FunctionCoefficient coeff_xi_0(hydrodynamics::interfaceLS);
+   hydrodynamics::InterfaceCoeff coeff_xi_0(problem, *pmesh);
    xi.ProjectCoefficient(coeff_xi_0);
    GridFunctionCoefficient coeff_xi(&xi);
    // Material marking and visualization function.
@@ -827,6 +827,11 @@ int main(int argc, char *argv[])
       hydrodynamics::InitWaterAir(rho0_gf, v_gf, e_gf, gamma_gf);
       if (mix_mass == false) { rho_coeff = &rho_gf_coeff; }
    }
+   else if (problem == 10)
+   {
+      hydrodynamics::InitTriPoint2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
+      if (mix_mass == false) { rho_coeff = &rho_gf_coeff; }
+   }
    v_gf.SyncAliasMemory(S);
    e_gf.SyncAliasMemory(S);
 
@@ -851,6 +856,7 @@ int main(int argc, char *argv[])
       case 7: source = 2; visc = true; vorticity = true;  break;
       case 8: visc = true; break;
       case 9: visc = true; break;
+      case 10: visc = true; break;
       default: MFEM_ABORT("Wrong problem specification!");
    }
    if (impose_visc) { visc = true; }
@@ -1277,6 +1283,7 @@ double rho0(const Vector &x)
       case 7: return x(1) >= 0.0 ? 2.0 : 1.0;
       case 8: return (x(0) < 0.5) ? 1.0 : 0.125;
       case 9: return (x(0) < 0.7) ? 1000.0 : 50.;
+      case 10: return 0.0; // initialized by another function.
       default: MFEM_ABORT("Bad number given for problem id!"); return 0.0;
    }
 }
@@ -1295,6 +1302,7 @@ double gamma_func(const Vector &x)
       case 7: return 5.0 / 3.0;
       case 8: return (x(0) < 0.5) ? 2.0 : 1.4;
       case 9: return (x(0) < 0.7) ? 4.4 : 1.4;
+      case 10: return 0.0; // initialized by another function.
       default: MFEM_ABORT("Bad number given for problem id!"); return 0.0;
    }
 }
@@ -1364,6 +1372,7 @@ void v0(const Vector &x, Vector &v)
       }
       case 8: v = 0.0; break;
       case 9: v = 0.0; break;
+      case 10: v = 0.0; break;
       default: MFEM_ABORT("Bad number given for problem id!");
    }
 }
@@ -1437,6 +1446,7 @@ double e0(const Vector &x)
                                   : 0.1 / rho0(x) / (gamma_func(x) - 1.0);
       case 9: return (x(0) < 0.7) ? (1.0e9+gamma_func(x)*6.0e8) / rho0(x) / (gamma_func(x) - 1.0)
                                   : 1.0e5 / rho0(x) / (gamma_func(x) - 1.0);
+      case 10: return 0.0; // initialized by another function.
       default: MFEM_ABORT("Bad number given for problem id!"); return 0.0;
    }
 }

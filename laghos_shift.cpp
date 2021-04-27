@@ -47,6 +47,7 @@ int material_id(int el_id, const ParGridFunction &g)
    //return (integral > 0.0) ? 1 : 0;
 }
 
+/*
 double interfaceLS(const Vector &x)
 {
    // 0 - vertical - //sod
@@ -75,9 +76,10 @@ double interfaceLS(const Vector &x)
       default: MFEM_ABORT("error"); return 0.0;
    }
 }
+*/
 
 void MarkFaceAttributes(ParMesh &pmesh)
-{
+{  
    // Set face_attribute = 77 to faces that are on the material interface.
    for (int f = 0; f < pmesh.GetNumFaces(); f++)
    {
@@ -87,6 +89,65 @@ void MarkFaceAttributes(ParMesh &pmesh)
       {
          pmesh.SetFaceAttribute(f, 77);
       }
+   }
+}
+
+double InterfaceCoeff::Eval(ElementTransformation &T,
+                            const IntegrationPoint &ip)
+{
+   Vector x(3);
+   T.Transform(ip, x);
+
+   const int dim = pmesh.Dimension();
+
+   // Modes for Taylor-Green (problem 0):
+   // 0 - vertical
+   // 1 - diagonal
+   // 2 - circle
+  const int mode_TG = 1;
+
+   switch (problem)
+   {
+      case 0:
+      {
+         if (mode_TG == 0)
+         {
+            const int glob_NE = pmesh.GetGlobalNE();
+            // The domain area for the TG is 1.
+            const int dx = sqrt(1.0 / glob_NE);
+
+            // The middle of the element after x = 0.5.
+            return tanh(x(0) - (0.5 + dx/2.0));
+         }
+         else if (mode_TG == 1)
+         {
+            return tanh(x(0) - x(1));
+         }
+         else if (mode_TG == 2)
+         {
+            double center[3] = {0.5, 0.5, 0.5};
+            double rad = 0.0;
+            for (int d = 0; d < dim; d++)
+            {
+               rad += (x(d) - center[d]) * (x(d) - center[d]);
+            }
+            rad = sqrt(rad + 1e-16);
+            return tanh(rad - 0.3);
+         }
+         else { MFEM_ABORT("wrong TG mode"); return 0.0; }
+      }
+      case 8: return tanh(x(0) - 0.5); // 2 mat Sod.
+      case 9: return tanh(x(0) - 0.7); // water-air.
+      case 10:
+      {
+         const int glob_NE = pmesh.GetGlobalNE();
+         // The domain area for the 3point is 21.
+         const int dx = sqrt(21.0 / glob_NE);
+
+         // The middle of the element after x = 1.
+         return tanh(x(0) - (1.0 + dx/2.0));
+      }
+      default: MFEM_ABORT("error"); return 0.0;
    }
 }
 
@@ -617,6 +678,45 @@ void InitWaterAir(ParGridFunction &rho, ParGridFunction &v,
       else
       {
          r = 50; g = 1.4; p = 1.e5;
+         gamma(i) = g;
+         for (int j = 0; j < ndofs; j++)
+         {
+            rho(i*ndofs + j) = r;
+            e(i*ndofs + j)   = p / r / (g - 1.0);
+         }
+      }
+   }
+}
+
+void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
+                      ParGridFunction &e, ParGridFunction &gamma)
+{
+   MFEM_VERIFY(rho.ParFESpace()->GetMesh()->Dimension() == 2, "2D only.");
+
+   v = 0.0;
+   ParFiniteElementSpace &pfes = *rho.ParFESpace();
+   const int NE    = pfes.GetNE();
+   const int ndofs = rho.Size() / NE;
+   double r, g, p;
+   for (int i = 0; i < NE; i++)
+   {
+      if (pfes.GetParMesh()->GetAttribute(i) == 1)
+      {
+         r = 1.0; g = 1.5; p = 1.0;
+         gamma(i) = g;
+         for (int j = 0; j < ndofs; j++)
+         {
+            rho(i*ndofs + j) = r;
+            e(i*ndofs + j)   = p / r / (g - 1.0);
+         }
+      }
+      else
+      {
+         g = 1.4; p = 0.1;
+         Vector center(2);
+         pfes.GetParMesh()->GetElementCenter(i, center);
+         r = (center(1) < 1.5) ? 1.0 : 0.125;
+
          gamma(i) = g;
          for (int j = 0; j < ndofs; j++)
          {

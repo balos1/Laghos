@@ -27,9 +27,23 @@ namespace hydrodynamics
 
 int material_id(int el_id, const ParGridFunction &g);
 
-double interfaceLS(const Vector &x);
+//double interfaceLS(const Vector &x);
 
 void MarkFaceAttributes(ParMesh &pmesh);
+
+// Specifies the material interface, depending on the problem number.
+class InterfaceCoeff : public Coefficient
+{
+private:
+   const int problem;
+   const ParMesh &pmesh;
+
+public:
+   InterfaceCoeff(int prob, const ParMesh &pm)
+      : problem(prob), pmesh(pm) { }
+
+   virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip);
+};
 
 // Performs full assemble for the force face terms:
 // F_face_ij = - int_face [ [grad_p * dist] * h1_shape_j l2_shape_i].
@@ -118,6 +132,9 @@ void InitSod2Mat(ParGridFunction &rho, ParGridFunction &v,
 
 void InitWaterAir(ParGridFunction &rho, ParGridFunction &v,
                   ParGridFunction &e, ParGridFunction &gamma);
+
+void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
+                      ParGridFunction &e, ParGridFunction &gamma);
 
 } // namespace hydrodynamics
 

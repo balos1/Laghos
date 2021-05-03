@@ -901,7 +901,8 @@ PressureFunction::PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
                                    int e_order, mfem::ParGridFunction &ggf)
    : p_fec(1, pmesh.Dimension(), basis_type),
      p_fes(&pmesh, &p_fec), p(&p_fes),
-     rho0DetJ0(p.Size()), gamma_gf(ggf)
+     rho0DetJ0(p.Size()), gamma_gf(ggf),
+     problem(0)
 {
    p = 0.0;
 
@@ -945,6 +946,11 @@ void PressureFunction::UpdatePressure(const ParGridFunction &e)
          Tr.SetIntPoint(&ip);
          double rho = rho0DetJ0(i * nqp + q) / Tr.Weight();
          p(i * nqp + q) = (gamma_gf(i)- 1.0) * rho * e_vals(q);
+         if (problem == 9) {
+             if (p_fes.GetParMesh()->GetAttribute(i) == 1) {
+                 p(i * nqp + q) -= gamma_gf(i)*6.0e8;
+             }
+         }
       }
    }
 }

@@ -461,13 +461,36 @@ int main(int argc, char *argv[])
       }
       if (dim == 2)
       {
-         mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
+         if (problem == 10) {
+             mesh = new Mesh(8, 4, Element::QUADRILATERAL, true, 7, 3);
+             //mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
+         }
+         else {
+             mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
+         }
          const int NBE = mesh->GetNBE();
          for (int b = 0; b < NBE; b++)
          {
             Element *bel = mesh->GetBdrElement(b);
             const int attr = (b < NBE/2) ? 2 : 1;
             bel->SetAttribute(attr);
+//            if (problem == 10) {
+//                Array<int> vertices;
+//                bel->GetVertices(vertices);
+//                int checkx = 0,
+//                    checky = 0;
+//                for (int v = 0; v < vertices.Size(); v++) {
+//                    double *coords = mesh->GetVertex(vertices[v]);
+//                    if (coords[0] == 0 || coords[0] == 7) {
+//                        checkx += 1;
+//                    }
+//                    if (coords[1] == 0 || coords[1] == 3) {
+//                        checky += 1;
+//                    }
+//                }
+//                if (checkx == 2) { bel->SetAttribute(1); }
+//                else if (checky == 2) { bel->SetAttribute(2); }
+//            }
          }
       }
       if (dim == 3)
@@ -780,22 +803,26 @@ int main(int argc, char *argv[])
    //
    // Shifted interface stuff.
    //
-   const bool mix_mass = false;
-   const bool shift_v = false;
-   const bool shift_e = false;
-   const bool calc_dist = true;  // avoids slowdowns for the pure zone runs.
+   bool shift = true;
+   bool mix_mass = shift;
+   mix_mass = false;
+   bool shift_v = shift;
+   bool shift_e = shift;
+   bool calc_dist = shift;  // avoids slowdowns for the pure zone runs.
+
    const int nproc = mpi.WorldSize();
    if (shift_e)
    {
       MFEM_VERIFY(nproc == 1, "The e term isn't parallel yet.");
    }
-//#define EXTRACT_1D
+#define EXTRACT_1D
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
    ParGridFunction xi(&pfes_xi);
    hydrodynamics::InterfaceCoeff coeff_xi_0(problem, *pmesh);
    xi.ProjectCoefficient(coeff_xi_0);
    GridFunctionCoefficient coeff_xi(&xi);
+
    // Material marking and visualization function.
    ParGridFunction materials(&mat_fes);
    int zone_id_L, zone_id_R;
@@ -808,6 +835,7 @@ int main(int argc, char *argv[])
       {
          zone_id_L = i-1;
          zone_id_R = i;
+//         if (problem == 9) { zone_id_L -= 1; zone_id_R -= 1; }
       }
    }
    hydrodynamics::MarkFaceAttributes(*pmesh);
@@ -869,6 +897,7 @@ int main(int argc, char *argv[])
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q);
+   hydro.SetPressureFunctionProblemType(problem);
    hydro.SetShiftingFlags(shift_v, shift_e);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
@@ -965,35 +994,70 @@ int main(int argc, char *argv[])
 
    // Shifting - related extractors.
 #ifdef EXTRACT_1D
+
+   if (problem != 8 && problem != 9) {
+       MFEM_ABORT(" Please comment out extract1D\n.");
+   }
    MFEM_VERIFY(nproc == 1, "Point extraction works inly in serial.");
    const double dx = 1.0 / NE;
    ParGridFunction &p_gf = hydro.GetPressure(e_gf);
    Vector point_interface(1), point_face(1);
    point_interface(0) = 0.5;
+   if (problem == 9) { point_interface(0) = 0.7; }
    point_face(0) = zone_id_R * dx;
-   std::cout << zone_id_R << std::endl;
+   std::cout << zone_id_L << " " << zone_id_R <<  std::endl;
+   std::cout << point_interface(0) << " " << point_face(0) <<  std::endl;
    hydrodynamics::PrintCellNumbers(point_interface, H1FESpace);
    hydrodynamics::PrintCellNumbers(point_face, L2FESpace);
    //MFEM_ABORT("numbers");
    // By construction, the interface is in the left zone.
-   hydrodynamics::PointExtractor v_extr(zone_id_L, point_interface, v_gf, "sod_v.out");
-   hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, "sod_x.out");
-   hydrodynamics::PointExtractor e_L_extr(zone_id_L, point_face, e_gf, "sod_e_L.out");
-   hydrodynamics::PointExtractor e_R_extr(zone_id_R, point_face, e_gf, "sod_e_R.out");
-   hydrodynamics::PointExtractor p_L_extr(zone_id_L, point_face, p_gf, "sod_p_fit_L.out");
-   hydrodynamics::PointExtractor p_R_extr(zone_id_R, point_face, p_gf, "sod_p_fit_R.out");
+   std::string vname, xname, pnameshiftl, pnameshiftr, pnamefitl, pnamefitr, enamel, enamer;
+
+   if (problem != 9) {
+       vname = "sod_v_" + std::to_string(zones) + ".out";
+       xname = "sod_x_" + std::to_string(zones) + ".out";
+       enamel = "sod_e_" + std::to_string(zones) + "_l.out";
+       enamer = "sod_e_" + std::to_string(zones) + "_r.out";
+       pnameshiftl = "sod_p_" + std::to_string(zones) + "_shift_l.out";
+       pnameshiftr = "sod_p_" + std::to_string(zones) + "_shift_r.out";
+       pnamefitl = "sod_p_" + std::to_string(zones) + "_fit_l.out";
+       pnamefitr = "sod_p_" + std::to_string(zones) + "_fit_r.out";
+   }
+   else {
+       vname = "airwater_v_" + std::to_string(zones) + ".out";
+       xname = "airwater_x_" + std::to_string(zones) + ".out";
+       enamel = "airwater_e_" + std::to_string(zones) + "_l.out";
+       enamer = "airwater_e_" + std::to_string(zones) + "_r.out";
+       pnameshiftl = "airwater_p_" + std::to_string(zones) + "_shift_l.out";
+       pnameshiftr = "airwater_p_" + std::to_string(zones) + "_shift_r.out";
+       pnamefitl = "airwater_p_" + std::to_string(zones) + "_fit_l.out";
+       pnamefitr = "airwater_p_" + std::to_string(zones) + "_fit_r.out";
+   }
+
+   hydrodynamics::PointExtractor v_extr(zone_id_L, point_interface, v_gf, vname);
+   hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, xname);
+   hydrodynamics::PointExtractor e_L_extr(zone_id_L, point_face, e_gf, enamel);
+   hydrodynamics::PointExtractor e_R_extr(zone_id_R, point_face, e_gf, enamer);
+   hydrodynamics::PointExtractor p_L_extr(zone_id_L, point_face, p_gf, pnamefitl);
+   hydrodynamics::PointExtractor p_R_extr(zone_id_R, point_face, p_gf, pnamefitr);
    hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, p_gf,
-                                                  dist, "sod_p_shift_L.out");
+                                                  dist, pnameshiftl);
    hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, p_gf,
-                                                  dist, "sod_p_shift_R.out");
+                                                  dist, pnameshiftr);
    v_extr.WriteValue(0.0);
    x_extr.WriteValue(0.0);
-   p_L_extr.WriteValue(0.0);
-   p_R_extr.WriteValue(0.0);
-   p_LS_extr.WriteValue(0.0);
-   p_RS_extr.WriteValue(0.0);
+   if (!shift) {
+       p_L_extr.WriteValue(0.0);
+        p_R_extr.WriteValue(0.0);
+   }
+   else {
+       p_LS_extr.WriteValue(0.0);
+       p_RS_extr.WriteValue(0.0);
+   }
 #endif
 
+   double energy_old = energy_init,
+          energy_new = energy_init;
    for (int ti = 1; !last_step; ti++)
    {
       if (t + dt >= t_final)
@@ -1018,7 +1082,7 @@ int main(int argc, char *argv[])
          // Repeat (solve again) with a decreased time step - decrease of the
          // time estimate suggests appearance of oscillations.
          dt *= 0.85;
-         if (dt < 1e-7)
+         if (dt < 1e-12)
          { MFEM_ABORT("The time step crashed!"); }
          t = t_old;
          S = S_old;
@@ -1048,14 +1112,22 @@ int main(int argc, char *argv[])
       x_extr.WriteValue(t);
       e_L_extr.WriteValue(t);
       e_R_extr.WriteValue(t);
-      p_L_extr.WriteValue(t);
-      p_R_extr.WriteValue(t);
-      p_LS_extr.WriteValue(t);
-      p_RS_extr.WriteValue(t);
+      if (!shift) {
+          p_L_extr.WriteValue(t);
+          p_R_extr.WriteValue(t);
+      }
+      else {
+          p_LS_extr.WriteValue(t);
+          p_RS_extr.WriteValue(t);
+      }
 #endif
 
       if (last_step || (ti % vis_steps) == 0)
       {
+         energy_old = energy_new;
+         energy_new = hydro.InternalEnergy(e_gf) + hydro.KineticEnergy(v_gf);
+
+
          double lnorm = e_gf * e_gf, norm;
          MPI_Allreduce(&lnorm, &norm, 1, MPI_DOUBLE, MPI_SUM, pmesh->GetComm());
          if (mem_usage)
@@ -1075,7 +1147,9 @@ int main(int argc, char *argv[])
                  << ",\tt = " << std::setw(5) << std::setprecision(4) << t
                  << ",\tdt = " << std::setw(5) << std::setprecision(6) << dt
                  << ",\t|e| = " << std::setprecision(10) << std::scientific
-                 << sqrt_norm;
+                 << sqrt_norm
+                 << ",\tde = " << std::setw(5) << std::setprecision(6) << energy_new-energy_old;
+
             //  << ",\t|IE| = " << std::setprecision(10) << std::scientific
             //  << internal_energy
             //   << ",\t|KE| = " << std::setprecision(10) << std::scientific
@@ -1183,7 +1257,8 @@ int main(int argc, char *argv[])
    switch (ode_solver_type)
    {
       case 2: steps *= 2; break;
-      case 3: steps *= 3; break;
+      case 3:
+      case 10: steps *= 3; break;
       case 4: steps *= 4; break;
       case 6: steps *= 6; break;
       case 7: steps *= 2;
@@ -1283,7 +1358,7 @@ double rho0(const Vector &x)
       case 7: return x(1) >= 0.0 ? 2.0 : 1.0;
       case 8: return (x(0) < 0.5) ? 1.0 : 0.125;
       case 9: return (x(0) < 0.7) ? 1000.0 : 50.;
-      case 10: return 0.0; // initialized by another function.
+      case 10: return (x(0) > 1.1 && x(1) > 1.5) ? 0.125 : 1.0; // initialized by another function.
       default: MFEM_ABORT("Bad number given for problem id!"); return 0.0;
    }
 }

@@ -26,6 +26,7 @@ namespace hydrodynamics
 {
 
 int material_id(int el_id, const ParGridFunction &g);
+int multi_material_id(int el_id, const ParGridFunction &xgf);
 
 //double interfaceLS(const Vector &x);
 
@@ -135,7 +136,6 @@ void InitWaterAir(ParGridFunction &rho, ParGridFunction &v,
 
 void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
                       ParGridFunction &e, ParGridFunction &gamma);
-
 } // namespace hydrodynamics
 
 } // namespace mfem

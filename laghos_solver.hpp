@@ -66,12 +66,15 @@ private:
    // Stores rho0 * det(J0)  at the pressure GF's nodes.
    Vector rho0DetJ0;
    ParGridFunction &gamma_gf;
+   int problem;
 
 public:
    PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
                     int e_order, ParGridFunction &ggf);
 
    void UpdatePressure(const ParGridFunction &e);
+
+   void SetProblem(int problem_) { problem = problem_; }
 
    ParGridFunction &GetPressure() { return p; }
 };
@@ -235,6 +238,11 @@ public:
    {
       shift_v = shift_vel;
       shift_e = shift_en;
+   }
+
+   void SetPressureFunctionProblemType(int problem)
+   {
+       p_func.SetProblem(problem);
    }
 
    // The density values, which are stored only at some quadrature points,

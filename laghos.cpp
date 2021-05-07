@@ -815,7 +815,7 @@ int main(int argc, char *argv[])
    {
       MFEM_VERIFY(nproc == 1, "The e term isn't parallel yet.");
    }
-#define EXTRACT_1D
+//#define EXTRACT_1D
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
    ParGridFunction xi(&pfes_xi);
@@ -889,6 +889,7 @@ int main(int argc, char *argv[])
    }
    if (impose_visc) { visc = true; }
 
+   double dt;
    hydrodynamics::LagrangianHydroOperator hydro(S.Size(),
                                                 H1FESpace, PosFESpace,
                                                 L2FESpace, ess_tdofs,
@@ -896,7 +897,7 @@ int main(int argc, char *argv[])
                                                 gamma_gf, dist_coeff, source, cfl,
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
-                                                order_q);
+                                                order_q, &dt);
    hydro.SetPressureFunctionProblemType(problem);
    hydro.SetShiftingFlags(shift_v, shift_e);
 
@@ -964,7 +965,8 @@ int main(int argc, char *argv[])
    // defines the Mult() method that used by the time integrators.
    ode_solver->Init(hydro);
    hydro.ResetTimeStepEstimate();
-   double t = 0.0, dt = hydro.GetTimeStepEstimate(S), t_old;
+   double t = 0.0, t_old;
+   dt = hydro.GetTimeStepEstimate(S);
    bool last_step = false;
    int steps = 0;
    BlockVector S_old(S);

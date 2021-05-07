@@ -73,7 +73,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-  const int mode_TG = 1;
+  const int mode_TG = 2;
 
    switch (problem)
    {
@@ -405,12 +405,14 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
 
       v.GetVectorValue(Trans, ip_f, v_vals);
       const int form = 4;
-      bool stability = false;
+      bool stability = true;
+      stability = false;
 
       // For each term, we keep the sign as if it is on the left hand side
       // because in SolveEnergy, this will be multiplied with -1 and added.
       // + <v, phi[[\grad p . d]]>
-      if (form == 1 || form == 2 || form == 3) {
+      if (form == 1 || form == 2 || form == 3)
+      {
           double gradp_d_jump_term = 1.0*(d_q1 * p_grad_q1 - d_q2 * p_grad_q2) *
                   (ip_f.weight) * (nor * v_vals);
 
@@ -434,8 +436,9 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           }
       }
 
-      // - < {v},{phi}[[nabla p . d]]>
-      if (form == 5) {
+      // - < {v},{phi}[[p + nabla p . d]]>
+      if (form == 5)
+      {
           double p_gradp_jump_term = 0.5*(p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2) *
                                   (ip_f.weight) * (nor * v_vals); //0.5 for {{phi}}
           double multfac = -1;
@@ -483,10 +486,12 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           gradv_d_n_n_jump = gradv_d_n_n1*nor - gradv_d_n_n2*nor;
           gradp_d_jump = p_grad_q1*d_q1 - p_grad_q2*d_q2;
           p_avg = 0.5*(p1 + p2);
-        }
+      }
 
       // - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]>
-      if (form == 3 || form == 5 || form == 6) {
+      // - <[[((nabla v d) . n)n]], {{p}}{{phi}} - 0.25[[nabla p. d]].[[nabla phi]]>
+      if (form == 3 || form == 5 || form == 6)
+      {
           // 1st element.
           {
              // L2 shape functions in the 1st element.
@@ -527,7 +532,7 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
       }
 
       // - <[[((nabla v d) . n)n]], {{p phi}}
-      if (form == 2 || form == 4)
+      if (form == 2 || form == 4 || form == 7)
       {
           // 1st element.
           {
@@ -555,46 +560,72 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
           }
       }
 
+      if (form == 7)
+      {
+          double p_jump_term = 0.5*(p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2) *
+                                  (ip_f.weight) * (nor * v_vals); //0.5 for {{phi}}
+          double multfac = -1;
+          // 1st element.
+          {
+             // L2 shape functions in the 1st element.
+             el_1.CalcShape(ip_e1, l2_shape);
+             for (int i = 0; i < l2dofs_cnt; i++)
+             {
+                 elvect(i) += multfac * l2_shape(i) * p_jump_term;
+             }
+          }
+          // 2nd element.
+          {
+             // L2 shape functions in the 2nd element.
+             el_2.CalcShape(ip_e2, l2_shape);
+             for (int i = 0; i < l2dofs_cnt; i++)
+             {
+                 elvect(i + l2dofs_cnt) += multfac * l2_shape(i) * p_jump_term;
+             }
+          }
+      }
+
+      // (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
       if (stability)
       {
-          double p_gradp_jump_term = p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2;
-          int problem = 9;
+            double p_gradp_jump_term = p1 + d_q1 * p_grad_q1 - p2 - d_q2 * p_grad_q2;
+            int problem = 8;
 
-          double rho = v.ParFESpace()->GetMesh()->GetAttribute(Trans.Elem1No) == 1 ? 1 : 0.125;
-          double dt = 0.0001;
-          if (problem == 9) {
-              rho = v.ParFESpace()->GetMesh()->GetAttribute(Trans.Elem1No) == 1 ? 1000 : 50.;
-              dt = 0.0000001;
-          }
+            double rho = v.ParFESpace()->GetMesh()->GetAttribute(Trans.Elem1No) == 1 ? 1 : 0.125;
+            double dtval = *dt;
+            if (problem == 9) {
+                rho = v.ParFESpace()->GetMesh()->GetAttribute(Trans.Elem1No) == 1 ? 1000 : 50.;
+            }
+            //dtval *= (v_vals*v_vals);
 
-          //1st element
-          {
-              DenseMatrix dshapephys(dof_p, dim);
-              double hinvdx = nor*nor/Trans.Elem1->Weight();
-              el_1.CalcShape(ip_e1, l2_shape);
-              el_1.CalcPhysDShape(*(Trans.Elem1), dshapephys);
-              dshapephys.AddMult(d_q1, l2_shape);
+            //1st element
+            {
+                DenseMatrix dshapephys(dof_p, dim);
+                double hinvdx = nor*nor/Trans.Elem1->Weight();
+                el_1.CalcShape(ip_e1, l2_shape);
+                el_1.CalcPhysDShape(*(Trans.Elem1), dshapephys);
+                dshapephys.AddMult(d_q1, l2_shape);
 
-              l2_shape *= p_gradp_jump_term;
-              l2_shape *= dt*ip_f.weight * hinvdx / rho;
-              Vector elvect_temp(elvect.GetData(), l2dofs_cnt);
-              elvect_temp.Add(-1., l2_shape);
-          }
+                l2_shape *= p_gradp_jump_term;
+                l2_shape *= dtval*ip_f.weight * hinvdx;
+                Vector elvect_temp(elvect.GetData(), l2dofs_cnt);
+                elvect_temp.Add(1., l2_shape);
+            }
 
-          //2nd element
-          {
-              DenseMatrix dshapephys(dof_p, dim);
-              double hinvdx = nor*nor/Trans.Elem2->Weight();
+            //2nd element
+            {
+                DenseMatrix dshapephys(dof_p, dim);
+                double hinvdx = nor*nor/Trans.Elem2->Weight();
 
-              el_2.CalcShape(ip_e2, l2_shape);
-              el_2.CalcPhysDShape(*(Trans.Elem2), dshapephys);
-              dshapephys.AddMult(d_q2, l2_shape);
+                el_2.CalcShape(ip_e2, l2_shape);
+                el_2.CalcPhysDShape(*(Trans.Elem2), dshapephys);
+                dshapephys.AddMult(d_q2, l2_shape);
 
-              l2_shape *= p_gradp_jump_term;
-              l2_shape *= dt*ip_f.weight * hinvdx / rho;
-              Vector elvect_temp(elvect.GetData()+l2dofs_cnt, l2dofs_cnt);
-              elvect_temp.Add(1., l2_shape);
-          }
+                l2_shape *= p_gradp_jump_term;
+                l2_shape *= dtval*ip_f.weight * hinvdx;
+                Vector elvect_temp(elvect.GetData()+l2dofs_cnt, l2dofs_cnt);
+                elvect_temp.Add(-1., l2_shape);
+            }
       }
    }
 }

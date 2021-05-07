@@ -72,12 +72,14 @@ class EnergyInterfaceIntegrator : public LinearFormIntegrator
 private:
    const ParGridFunction &p, &v;
    VectorCoefficient &dist;
+   double *dt;
 
 public:
    EnergyInterfaceIntegrator(const ParGridFunction &p_gf,
                              const ParGridFunction &v_gf,
-                             VectorCoefficient &d)
-      : p(p_gf), v(v_gf), dist(d) { }
+                             VectorCoefficient &d,
+                             double *dt_)
+      : p(p_gf), v(v_gf), dist(d), dt(dt_) { }
 
    using LinearFormIntegrator::AssembleRHSElementVect;
    virtual void AssembleRHSElementVect(const FiniteElement &el,

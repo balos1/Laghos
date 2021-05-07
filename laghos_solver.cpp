@@ -106,7 +106,8 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
                                                  const double cgt,
                                                  const int cgiter,
                                                  double ftz,
-                                                 const int oq) :
+                                                 const int oq,
+                                                 double *dt) :
    TimeDependentOperator(size),
    H1(h1), H1_x(h1x), L2(l2), H1c(H1.GetParMesh(), H1.FEColl(), 1),
    pmesh(H1.GetParMesh()),
@@ -285,7 +286,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       FaceForce.AddTraceFaceIntegrator(ffi);
 
       auto *efi = new EnergyInterfaceIntegrator(p_func.GetPressure(),
-                                                v_gf, dist_coeff);
+                                                v_gf, dist_coeff, dt);
       Array<int> attr;
       FaceForce_e.AddTraceFaceIntegrator(efi, attr);
 

@@ -216,7 +216,7 @@ public:
                            const double cfl,
                            const bool visc, const bool vort, const bool pa,
                            const double cgt, const int cgiter, double ftz_tol,
-                           const int order_q);
+                           const int order_q, double *dt);
    ~LagrangianHydroOperator();
 
    // Solve for dx_dt, dv_dt and de_dt.
@@ -233,6 +233,7 @@ public:
    double GetTimeStepEstimate(const Vector &S) const;
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
+   void SetTime(double dt) {};
 
    void SetShiftingFlags(bool shift_vel, bool shift_en)
    {

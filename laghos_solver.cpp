@@ -946,11 +946,12 @@ void PressureFunction::UpdatePressure(const ParGridFunction &e)
          const IntegrationPoint &ip = ir.IntPoint(q);
          Tr.SetIntPoint(&ip);
          double rho = rho0DetJ0(i * nqp + q) / Tr.Weight();
-         p(i * nqp + q) = (gamma_gf(i)- 1.0) * rho * e_vals(q);
-         if (problem == 9) {
-             if (p_fes.GetParMesh()->GetAttribute(i) == 1) {
-                 p(i * nqp + q) -= gamma_gf(i)*6.0e8;
-             }
+         p(i * nqp + q) = (gamma_gf(i) - 1.0) * rho * e_vals(q);
+
+         if (problem == 9 && p_fes.GetParMesh()->GetAttribute(i) == 1)
+         {
+            // Water pressure in the water/air test.
+            p(i * nqp + q) -= gamma_gf(i) * 6.0e8;
          }
       }
    }

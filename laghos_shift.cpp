@@ -111,13 +111,14 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
       {
          const int glob_NE = pmesh.GetGlobalNE();
          // The domain area for the 3point is 21.
-         //const int dx = sqrt(21.0 / glob_NE);
+         //const double dx = sqrt(21.0 / glob_NE);
 
          const int ref_levels = sqrt(glob_NE/ 21 / 4);
          const double dx = (7/(7*pow(2., ref_levels*1.)));
 
          // The middle of the element after x = 1.
          double waveloc = 1. + 0.5*dx;
+
          waveloc = 1.1;
          return tanh(x(0) - waveloc);
       }

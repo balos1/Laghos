@@ -174,7 +174,7 @@ protected:
    mutable ParGridFunction rhs_c_gf, dvc_gf;
    mutable Array<int> c_tdofs[3];
 
-   bool shift_v = false, shift_e = false;
+   int v_shift_type = 0, e_shift_type = 0;
 
    virtual void ComputeMaterialProperties(int nvalues, const double gamma[],
                                           const double rho[], const double e[],
@@ -234,10 +234,14 @@ public:
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
 
-   void SetShiftingFlags(bool shift_vel, bool shift_en)
+   void SetShiftingTypes(int vs_type, int es_type)
    {
-      shift_v = shift_vel;
-      shift_e = shift_en;
+      v_shift_type = vs_type;
+      e_shift_type = es_type;
+
+      auto tfi = FaceForce_e.GetTLFI();
+      auto en_integ = dynamic_cast<EnergyInterfaceIntegrator *>((*tfi)[0]);
+      en_integ->SetShiftType(es_type);
    }
 
    void SetPressureFunctionProblemType(int problem)

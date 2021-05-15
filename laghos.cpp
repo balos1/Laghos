@@ -465,9 +465,8 @@ int main(int argc, char *argv[])
              mesh = new Mesh(8, 4, Element::QUADRILATERAL, true, 7, 3);
              //mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
          }
-         else {
-             mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
-         }
+         else { mesh = new Mesh(2, 2, Element::QUADRILATERAL, true); }
+
          const int NBE = mesh->GetNBE();
          for (int b = 0; b < NBE; b++)
          {
@@ -803,17 +802,21 @@ int main(int argc, char *argv[])
    //
    // Shifted interface stuff.
    //
-   bool shift = true;
-   bool mix_mass = shift;
-   mix_mass = false;
-   bool shift_v = shift;
-   bool shift_e = shift;
-   bool calc_dist = shift;  // avoids slowdowns for the pure zone runs.
+   bool mix_mass = false;
+   // 0 -- no shifting term.
+   // 1 -- the [[grad_p d]] term.
+   int v_shift_type = 1;
+   // 0 -- no shifting terms.
+   // 1 -- only the conservative [[grad_p d]] term.
+   // ...
+   int e_shift_type = 0;
+
+   const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 
    const int nproc = mpi.WorldSize();
-   if (shift_e)
+   if (e_shift_type > 0)
    {
-      MFEM_VERIFY(nproc == 1, "The e term isn't parallel yet.");
+      MFEM_VERIFY(nproc == 1, "The e terms are not parallel yet.");
    }
 //#define EXTRACT_1D
    // Interface function.
@@ -835,7 +838,6 @@ int main(int argc, char *argv[])
       {
          zone_id_L = i-1;
          zone_id_R = i;
-//         if (problem == 9) { zone_id_L -= 1; zone_id_R -= 1; }
       }
    }
    hydrodynamics::MarkFaceAttributes(*pmesh);
@@ -899,7 +901,7 @@ int main(int argc, char *argv[])
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q, &dt);
    hydro.SetPressureFunctionProblemType(problem);
-   hydro.SetShiftingFlags(shift_v, shift_e);
+   hydro.SetShiftingTypes(v_shift_type, e_shift_type);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
    char vishost[] = "localhost";

@@ -73,6 +73,7 @@ private:
    const ParGridFunction &p, &v;
    VectorCoefficient &dist;
    double *dt;
+   int e_shift_type = 0;
 
 public:
    EnergyInterfaceIntegrator(const ParGridFunction &p_gf,
@@ -91,6 +92,8 @@ public:
                                     const FiniteElement &el_2,
                                     FaceElementTransformations &Trans,
                                     Vector &elvect);
+
+   void SetShiftType(int type) { e_shift_type = type; }
 };
 
 void PrintCellNumbers(const Vector &xyz, const ParFiniteElementSpace &pfes);

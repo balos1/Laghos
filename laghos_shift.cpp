@@ -247,9 +247,9 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
 
       // - <[[grad p . d]], psi>
       // - <gradp1*d1*nor, psi> + <gradp2*d2*nor, psi>
-      // We keep the negative sign here because in solvevelocity, this will
-      // be multipled with -ve sign (i.e. it will be moved to the right hand side
-      // and signs will be changed).
+      // We keep the negative sign here because in SolveVelocity(), this term
+      // will be multipled with -1 and added to the RHS.
+
       // 1st element.
       {
          // Compute dist * grad_p in the first element.
@@ -328,8 +328,6 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
    const int nqp_face = ir->GetNPoints();
 
    // grad_p at all quad points, on both sides.
-   Vector p_e;
-   Array<int> dofs_p;
    const FiniteElement &el_p = *p.ParFESpace()->GetFE(0);
    const FiniteElement &el_v = *v.ParFESpace()->GetFE(0);
    const int dof_p = el_p.GetDof(), dof_v = el_v.GetDof();
@@ -403,11 +401,9 @@ void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
       }
       v_strain_q2.Transpose();
 
-
       v.GetVectorValue(Trans, ip_f, v_vals);
-      const int form = 4;
-      bool stability = true;
-      stability = false;
+      const int form = e_shift_type;
+      const bool stability = false;
 
       // For each term, we keep the sign as if it is on the left hand side
       // because in SolveEnergy, this will be multiplied with -1 and added.
@@ -824,12 +820,6 @@ void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
       if (pfes.GetParMesh()->GetAttribute(i) == 1)
       {
          r = 1.0; g = 1.5; p = 1.0;
-         gamma(i) = g;
-         for (int j = 0; j < ndofs; j++)
-         {
-            rho(i*ndofs + j) = r;
-            e(i*ndofs + j)   = p / r / (g - 1.0);
-         }
       }
       else
       {
@@ -837,13 +827,13 @@ void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
          Vector center(2);
          pfes.GetParMesh()->GetElementCenter(i, center);
          r = (center(1) < 1.5) ? 1.0 : 0.125;
+      }
 
-         gamma(i) = g;
-         for (int j = 0; j < ndofs; j++)
-         {
-            rho(i*ndofs + j) = r;
-            e(i*ndofs + j)   = p / r / (g - 1.0);
-         }
+      gamma(i) = g;
+      for (int j = 0; j < ndofs; j++)
+      {
+         rho(i*ndofs + j) = r;
+         e(i*ndofs + j)   = p / r / (g - 1.0);
       }
    }
 }

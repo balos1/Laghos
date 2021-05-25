@@ -807,9 +807,15 @@ int main(int argc, char *argv[])
    // 1 -- the [[grad_p d]] term.
    int v_shift_type = 1;
    // 0 -- no shifting terms.
-   // 1 -- only the conservative [[grad_p d]] term.
-   // ...
-   int e_shift_type = 0;
+   // 1 -- + <v, phi[[\grad p . d]]>
+   // 2 -- - <[[((nabla v d) . n)n]], {{p phi}} + <v, phi[[\grad p . d]]>
+   //T3 -- - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]>  + <v, phi[[\grad p . d]]>
+   //G4 -- - <[[((nabla v d) . n)n]], {{p phi}}
+   //N5 -- - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]> - < {v},{phi}[[p + nabla p . d]]>
+
+   // optionally, a stability term can be added:
+   // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
+   int e_shift_type = 4;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 
@@ -862,6 +868,7 @@ int main(int argc, char *argv[])
       hydrodynamics::InitTriPoint2Mat(rho0_gf, v_gf, e_gf, gamma_gf);
       if (mix_mass == false) { rho_coeff = &rho_gf_coeff; }
    }
+
    v_gf.SyncAliasMemory(S);
    e_gf.SyncAliasMemory(S);
 
@@ -886,7 +893,7 @@ int main(int argc, char *argv[])
       case 7: source = 2; visc = true; vorticity = true;  break;
       case 8: visc = true; break;
       case 9: visc = true; break;
-      case 10: visc = true; break;
+      case 10: visc = true; S.HostRead(); break;
       default: MFEM_ABORT("Wrong problem specification!");
    }
    if (impose_visc) { visc = true; }
@@ -1050,7 +1057,7 @@ int main(int argc, char *argv[])
                                                   dist, pnameshiftr);
    v_extr.WriteValue(0.0);
    x_extr.WriteValue(0.0);
-   if (!shift) {
+   if (v_shift_type == 0 && e_shift_type == 0) {
        p_L_extr.WriteValue(0.0);
         p_R_extr.WriteValue(0.0);
    }
@@ -1116,7 +1123,7 @@ int main(int argc, char *argv[])
       x_extr.WriteValue(t);
       e_L_extr.WriteValue(t);
       e_R_extr.WriteValue(t);
-      if (!shift) {
+      if (v_shift_type == 0 && e_shift_type == 0) {
           p_L_extr.WriteValue(t);
           p_R_extr.WriteValue(t);
       }

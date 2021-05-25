@@ -48,7 +48,7 @@ int material_id(int el_id, const ParGridFunction &g)
 }
 
 void MarkFaceAttributes(ParMesh &pmesh)
-{  
+{
    // Set face_attribute = 77 to faces that are on the material interface.
    for (int f = 0; f < pmesh.GetNumFaces(); f++)
    {
@@ -73,7 +73,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-  const int mode_TG = 2;
+  const int mode_TG = 1;
 
    switch (problem)
    {
@@ -298,6 +298,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
          }
       }
    }
+   //elmat *= -1;
 }
 
 void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,
@@ -823,10 +824,11 @@ void InitTriPoint2Mat(ParGridFunction &rho, ParGridFunction &v,
       }
       else
       {
-         g = 1.4; p = 0.1;
+         p = 0.1;
          Vector center(2);
          pfes.GetParMesh()->GetElementCenter(i, center);
          r = (center(1) < 1.5) ? 1.0 : 0.125;
+         g = (center(1) < 1.5) ? 1.4 : 1.5;
       }
 
       gamma(i) = g;

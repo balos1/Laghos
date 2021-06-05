@@ -58,25 +58,33 @@ struct TimingData
 
 class PressureFunction
 {
+public:
+   enum PressureSpace {L2, H1};
+
 private:
-   const int basis_type = BasisType::GaussLobatto;
-   L2_FECollection p_fec;
-   ParFiniteElementSpace p_fes;
-   ParGridFunction p;
+   const int p_order     = 1;
+   const int basis_type  = BasisType::GaussLobatto;
+   PressureSpace p_space = L2;
+
+   L2_FECollection p_fec_L2;
+   H1_FECollection p_fec_H1;
+   ParFiniteElementSpace p_fes_L2, p_fes_H1;
+   ParGridFunction p_L2, p_H1;
    // Stores rho0 * det(J0)  at the pressure GF's nodes.
    Vector rho0DetJ0;
    ParGridFunction &gamma_gf;
-   int problem;
+   int problem = -1;
 
 public:
    PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
-                    int e_order, ParGridFunction &ggf);
+                    int e_order, ParGridFunction &gamma);
 
    void UpdatePressure(const ParGridFunction &e);
 
+   void SetPressureSpace(PressureSpace space) { p_space = space; }
    void SetProblem(int problem_) { problem = problem_; }
 
-   ParGridFunction &GetPressure() { return p; }
+   ParGridFunction &GetPressure() { return (p_space == L2) ? p_L2 : p_H1; }
 };
 
 class QUpdate
@@ -234,19 +242,18 @@ public:
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
 
-   void SetShiftingTypes(int vs_type, int es_type)
+   void SetShiftingOptions(PressureFunction::PressureSpace p_space, int problem,
+                           int vs_type, int es_type)
    {
+      p_func.SetPressureSpace(p_space);
+      p_func.SetProblem(problem);
+
       v_shift_type = vs_type;
       e_shift_type = es_type;
 
       auto tfi = FaceForce_e.GetTLFI();
       auto en_integ = dynamic_cast<EnergyInterfaceIntegrator *>((*tfi)[0]);
       en_integ->SetShiftType(es_type);
-   }
-
-   void SetPressureFunctionProblemType(int problem)
-   {
-       p_func.SetProblem(problem);
    }
 
    // The density values, which are stored only at some quadrature points,

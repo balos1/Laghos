@@ -83,7 +83,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
          {
             const int glob_NE = pmesh.GetGlobalNE();
             // The domain area for the TG is 1.
-            const int dx = sqrt(1.0 / glob_NE);
+            const double dx = sqrt(1.0 / glob_NE);
 
             // The middle of the element after x = 0.5.
             return tanh(x(0) - (0.5 + dx/2.0));
@@ -204,7 +204,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    const IntegrationRule *ir = &IntRules.Get(Trans.GetGeometryType(), ir_order);
    const int nqp_face = ir->GetNPoints();
 
-   // grad_p at all quad points, on both sides.
+   // grad_p at all DOFs of the pressure FE space, on both sides.
    const FiniteElement &el_p = *p.ParFESpace()->GetFE(0);
    const int dof_p = el_p.GetDof();
    DenseMatrix p_grad_e_1(dof_p, dim), p_grad_e_2(dof_p, dim);
@@ -268,7 +268,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                for (int d = 0; d < dim; d++)
                {
                   elmat(i, d*h1dofs_cnt_face + j)
-                          -= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+                         -= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
                }
             }
          }

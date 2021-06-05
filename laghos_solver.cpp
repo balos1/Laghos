@@ -897,13 +897,15 @@ void LagrangianHydroOperator::AssembleForceMatrix() const
 }
 
 PressureFunction::PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
-                                   int e_order, mfem::ParGridFunction &ggf)
-   : p_fec(1, pmesh.Dimension(), basis_type),
-     p_fes(&pmesh, &p_fec), p(&p_fes),
-     rho0DetJ0(p.Size()), gamma_gf(ggf),
-     problem(0)
+                                   int e_order, mfem::ParGridFunction &gamma)
+   : p_fec_L2(p_order, pmesh.Dimension(), basis_type),
+     p_fec_H1(p_order, pmesh.Dimension(), basis_type),
+     p_fes_L2(&pmesh, &p_fec_L2), p_fes_H1(&pmesh, &p_fec_H1),
+     p_L2(&p_fes_L2), p_H1(&p_fes_H1),
+     rho0DetJ0(p_L2.Size()), gamma_gf(gamma)
 {
-   p = 0.0;
+   p_L2 = 0.0;
+   p_H1 = 0.0;
 
    const int NE = pmesh.GetNE();
    const int nqp = rho0DetJ0.Size() / NE;
@@ -912,8 +914,8 @@ PressureFunction::PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
    for (int i = 0; i < NE; i++)
    {
       // The points (and their numbering) coincide with the nodes of p.
-      const IntegrationRule &ir = p_fes.GetFE(i)->GetNodes();
-      ElementTransformation &Tr = *p_fes.GetElementTransformation(i);
+      const IntegrationRule &ir = p_fes_L2.GetFE(i)->GetNodes();
+      ElementTransformation &Tr = *p_fes_L2.GetElementTransformation(i);
 
       rho0.GetValues(Tr, ir, rho_vals);
       for (int q = 0; q < nqp; q++)
@@ -927,15 +929,16 @@ PressureFunction::PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
 
 void PressureFunction::UpdatePressure(const ParGridFunction &e)
 {
-   const int NE = e.ParFESpace()->GetParMesh()->GetNE();
+   const int NE = p_fes_L2.GetParMesh()->GetNE();
    Vector e_vals;
 
+   // Compute L2 pressure element by element.
    for (int i = 0; i < NE; i++)
    {
       // The points (and their numbering) coincide with the nodes of p.
-      const IntegrationRule &ir = p_fes.GetFE(i)->GetNodes();
+      const IntegrationRule &ir = p_fes_L2.GetFE(i)->GetNodes();
       const int nqp = ir.GetNPoints();
-      ElementTransformation &Tr = *p_fes.GetElementTransformation(i);
+      ElementTransformation &Tr = *p_fes_L2.GetElementTransformation(i);
 
       e.GetValues(Tr, ir, e_vals);
 
@@ -944,14 +947,21 @@ void PressureFunction::UpdatePressure(const ParGridFunction &e)
          const IntegrationPoint &ip = ir.IntPoint(q);
          Tr.SetIntPoint(&ip);
          double rho = rho0DetJ0(i * nqp + q) / Tr.Weight();
-         p(i * nqp + q) = (gamma_gf(i) - 1.0) * rho * e_vals(q);
+         p_L2(i * nqp + q) = (gamma_gf(i) - 1.0) * rho * e_vals(q);
 
-         if (problem == 9 && p_fes.GetParMesh()->GetAttribute(i) == 1)
+         if (problem == 9 && p_fes_L2.GetParMesh()->GetAttribute(i) == 1)
          {
             // Water pressure in the water/air test.
-            p(i * nqp + q) -= gamma_gf(i) * 6.0e8;
+            p_L2(i * nqp + q) -= gamma_gf(i) * 6.0e8;
          }
       }
+   }
+
+   // If H1 pressure is needed, average on the shared faces.
+   if (p_space == H1)
+   {
+      GridFunctionCoefficient p_coeff(&p_L2);
+      p_H1.ProjectDiscCoefficient(p_coeff, GridFunction::ARITHMETIC);
    }
 }
 

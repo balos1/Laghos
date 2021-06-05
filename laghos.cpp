@@ -69,6 +69,7 @@
 using std::cout;
 using std::endl;
 using namespace mfem;
+using namespace hydrodynamics;
 
 // Choice for the problem setup.
 static int problem, dim;
@@ -465,7 +466,8 @@ int main(int argc, char *argv[])
              mesh = new Mesh(8, 4, Element::QUADRILATERAL, true, 7, 3);
              //mesh = new Mesh(2, 2, Element::QUADRILATERAL, true);
          }
-         else { mesh = new Mesh(2, 2, Element::QUADRILATERAL, true); }
+         else
+         { mesh = new Mesh(2, 2, Element::QUADRILATERAL, true); }
 
          const int NBE = mesh->GetNBE();
          for (int b = 0; b < NBE; b++)
@@ -800,8 +802,14 @@ int main(int argc, char *argv[])
    gamma_gf.ProjectCoefficient(mat_coeff);
 
    //
-   // Shifted interface stuff.
+   // Shifted interface options.
    //
+   // FE space for the pressure reconstruction.
+   // L2 or H1.
+   PressureFunction::PressureSpace p_space = PressureFunction::L2;
+   // Integration of mass matrices.
+   // true  -- the element mass matrices are integrated as mixed.
+   // false -- the element mass matrices are integrated as pure.
    bool mix_mass = false;
    // 0 -- no shifting term.
    // 1 -- the [[grad_p d]] term.
@@ -907,8 +915,7 @@ int main(int argc, char *argv[])
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q, &dt);
-   hydro.SetPressureFunctionProblemType(problem);
-   hydro.SetShiftingTypes(v_shift_type, e_shift_type);
+   hydro.SetShiftingOptions(p_space, problem, v_shift_type, e_shift_type);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
    char vishost[] = "localhost";

@@ -245,9 +245,9 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
       const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
 //      std::cout << p1 << " " << p2 << " " << p1-p2 << " k10p1p2\n";
 
-      // - <[[grad p . d]], psi>
-      // - <gradp1*d1*nor, psi> + <gradp2*d2*nor, psi>
-      // We keep the negative sign here because in SolveVelocity(), this term
+      // + <[[grad p . d]], psi>
+      // + <gradp1*d1*nor, psi> - <gradp2*d2*nor, psi>
+      // We keep the positive sign here because in SolveVelocity(), this term
       // will be multipled with -1 and added to the RHS.
 
       // 1st element.
@@ -268,7 +268,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                for (int d = 0; d < dim; d++)
                {
                   elmat(i, d*h1dofs_cnt_face + j)
-                         -= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+                         += grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
                }
             }
          }
@@ -292,13 +292,12 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                for (int d = 0; d < dim; d++)
                {
                   elmat(l2dofs_cnt + i, d*h1dofs_cnt_face + j)
-                          += grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+                          -= grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
                }
             }
          }
       }
    }
-   //elmat *= -1;
 }
 
 void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,

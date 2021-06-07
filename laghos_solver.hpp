@@ -64,7 +64,7 @@ public:
 private:
    const int p_order     = 1;
    const int basis_type  = BasisType::GaussLobatto;
-   PressureSpace p_space = L2;
+   PressureSpace p_space;
 
    L2_FECollection p_fec_L2;
    H1_FECollection p_fec_H1;
@@ -76,13 +76,12 @@ private:
    int problem = -1;
 
 public:
-   PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
-                    int e_order, ParGridFunction &gamma);
+   PressureFunction(ParMesh &pmesh, PressureSpace space,
+                    ParGridFunction &rho0, int e_order, ParGridFunction &gamma);
 
    void UpdatePressure(const ParGridFunction &e);
 
-   void SetPressureSpace(PressureSpace space) { p_space = space; }
-   void SetProblem(int problem_) { problem = problem_; }
+   void SetProblem(int prob) { problem = prob; }
 
    ParGridFunction &GetPressure() { return (p_space == L2) ? p_L2 : p_H1; }
 };
@@ -142,7 +141,7 @@ protected:
    Array<int> block_offsets;
    // Reference to the current mesh configuration.
    mutable ParGridFunction x_gf;
-   mutable PressureFunction p_func;
+   PressureFunction &p_func;
    const Array<int> &ess_tdofs;
    const int dim, NE, l2dofs_cnt, h1dofs_cnt, source_type;
    const double cfl;
@@ -167,7 +166,7 @@ protected:
    // assembled in each time step and then it is used to compute the final
    // right-hand sides for momentum and specific internal energy.
    mutable MixedBilinearForm Force, FaceForce;
-   mutable LinearForm FaceForce_v, FaceForce_e;
+   mutable LinearForm FaceForce_e;
    // Same as above, but done through partial assembly.
    ForcePAOperator *ForcePA;
    // Mass matrices done through partial assembly:
@@ -220,6 +219,7 @@ public:
                            ParGridFunction &rho0_gf, ParGridFunction &v_gf,
                            ParGridFunction &gamma_gf,
                            VectorCoefficient &dist_coeff,
+                           PressureFunction &pressure,
                            const int source,
                            const double cfl,
                            const bool visc, const bool vort, const bool pa,
@@ -242,18 +242,20 @@ public:
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
 
-   void SetShiftingOptions(PressureFunction::PressureSpace p_space, int problem,
-                           int vs_type, int es_type)
+   void SetShiftingOptions(int problem, int vs_type, int es_type)
    {
-      p_func.SetPressureSpace(p_space);
       p_func.SetProblem(problem);
 
       v_shift_type = vs_type;
       e_shift_type = es_type;
 
+      auto tfi_v = FaceForce.GetTFBFI();
+      auto v_integ = dynamic_cast<FaceForceIntegrator *>((*tfi_v)[0]);
+      v_integ->SetShiftType(v_shift_type);
+
       auto tfi = FaceForce_e.GetTLFI();
       auto en_integ = dynamic_cast<EnergyInterfaceIntegrator *>((*tfi)[0]);
-      en_integ->SetShiftType(es_type);
+      en_integ->SetShiftType(e_shift_type);
    }
 
    // The density values, which are stored only at some quadrature points,

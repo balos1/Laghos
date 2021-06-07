@@ -55,6 +55,8 @@ private:
    const ParGridFunction &p;
    VectorCoefficient &dist;
 
+   int v_shift_type = 0;
+
   public:
    FaceForceIntegrator(const ParGridFunction &p_gf,
                        VectorCoefficient &d) : p(p_gf), dist(d)  { }
@@ -65,6 +67,8 @@ private:
                            const FiniteElement &test_fe2,
                            FaceElementTransformations &Trans,
                            DenseMatrix &elmat);
+
+   void SetShiftType(int type) { v_shift_type = type; }
 };
 
 class EnergyInterfaceIntegrator : public LinearFormIntegrator

@@ -806,16 +806,19 @@ int main(int argc, char *argv[])
    //
    // FE space for the pressure reconstruction.
    // L2 or H1.
-   PressureFunction::PressureSpace p_space = PressureFunction::L2;
+   PressureFunction::PressureSpace p_space = PressureFunction::H1;
    // Integration of mass matrices.
    // true  -- the element mass matrices are integrated as mixed.
    // false -- the element mass matrices are integrated as pure.
    bool mix_mass = false;
    // 0 -- no shifting term.
-   // 1 -- the [[grad_p d]] term.
+   // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
+   // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
    int v_shift_type = 1;
    // 0 -- no shifting terms.
-   // 1 -- + <v, phi[[\grad p . d]]>
+   // 1 -- the energy RHS gets the conservative moemntum term:
+   //      + < [grad_p.d] v phi >                   for v_shift_type = 1.
+   //      + < [grad_p.d * sum_i grad_vi.d] n phi > for v_shift_type = 2.
    // 2 -- - <[[((nabla v d) . n)n]], {{p phi}} + <v, phi[[\grad p . d]]>
    //T3 -- - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]>  + <v, phi[[\grad p . d]]>
    //G4 -- - <[[((nabla v d) . n)n]], {{p phi}}
@@ -823,15 +826,17 @@ int main(int argc, char *argv[])
 
    // optionally, a stability term can be added:
    // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
-   int e_shift_type = 4;
+   int e_shift_type = 1;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 
    const int nproc = mpi.WorldSize();
-   if (e_shift_type > 0)
+   if (e_shift_type > 1)
    {
       MFEM_VERIFY(nproc == 1, "The e terms are not parallel yet.");
    }
+   if (e_shift_type == 1) { MFEM_VERIFY(v_shift_type == 1, "doesn't match"); }
+
 //#define EXTRACT_1D
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
@@ -907,15 +912,17 @@ int main(int argc, char *argv[])
    if (impose_visc) { visc = true; }
 
    double dt;
+   PressureFunction p_gf(*pmesh, p_space, rho0_gf, order_e, gamma_gf);
    hydrodynamics::LagrangianHydroOperator hydro(S.Size(),
                                                 H1FESpace, PosFESpace,
                                                 L2FESpace, ess_tdofs,
                                                 *rho_coeff, rho0_gf, v_gf,
-                                                gamma_gf, dist_coeff, source, cfl,
+                                                gamma_gf, dist_coeff, p_gf,
+                                                source, cfl,
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q, &dt);
-   hydro.SetShiftingOptions(p_space, problem, v_shift_type, e_shift_type);
+   hydro.SetShiftingOptions(problem, v_shift_type, e_shift_type);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
    char vishost[] = "localhost";

@@ -98,6 +98,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
                                                  ParGridFunction &v_gf,
                                                  ParGridFunction &gamma_gf,
                                                  VectorCoefficient &dist_coeff,
+                                                 PressureFunction &pressure,
                                                  const int source,
                                                  const double cfl,
                                                  const bool visc,
@@ -119,7 +120,6 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
    L2GTVSize(L2.GlobalTrueVSize()),
    block_offsets(4),
    x_gf(&H1_x),
-   p_func(*pmesh, rho0_gf, L2.GetOrder(0), gamma_gf),
    ess_tdofs(ess_tdofs),
    dim(pmesh->Dimension()),
    NE(pmesh->GetNE()),
@@ -131,6 +131,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
    p_assembly(p_assembly),
    cg_rel_tol(cgt), cg_max_iter(cgiter),ftz_tol(ftz),
    gamma_gf(gamma_gf),
+   p_func(pressure),
    Mv(&H1), Mv_spmat_copy(),
    Me(l2dofs_cnt, l2dofs_cnt, NE),
    Me_inv(l2dofs_cnt, l2dofs_cnt, NE),
@@ -140,7 +141,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
    qdata(dim, NE, ir.GetNPoints()),
    qdata_is_current(false),
    forcemat_is_assembled(false),
-   Force(&H1, &L2), FaceForce(&H1, &L2), FaceForce_v(&H1), FaceForce_e(&L2),
+   Force(&H1, &L2), FaceForce(&H1, &L2), FaceForce_e(&L2),
    ForcePA(nullptr), VMassPA(nullptr), EMassPA(nullptr),
    VMassPA_Jprec(nullptr),
    CG_VMass(H1.GetParMesh()->GetComm()),
@@ -303,7 +304,6 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       vfi->SetIntRule(&ir);
       Array<int> interface_attr(1);
       interface_attr[0] = 77;
-      //FaceForce_v.AddTraceFaceIntegrator(vfi, interface_attr);
    }
 }
 
@@ -490,8 +490,8 @@ void LagrangianHydroOperator::SolveEnergy(const Vector &S, const Vector &v,
       // This Force object is l2_dofs x h1_dofs (transpose of the paper one).
       Force.Mult(v, e_rhs);
 
-      //FaceForce.AddMult(v, e_rhs, 1.0);
-      if (e_shift_type > 0) { FaceForce_e.Assemble(); e_rhs -= FaceForce_e; }
+      if (e_shift_type == 1) { FaceForce.AddMult(v, e_rhs, 1.0); }
+      if (e_shift_type > 1) { FaceForce_e.Assemble(); e_rhs -= FaceForce_e; }
 
       timer.sw_force.Stop();
       if (e_source) { e_rhs += *e_source; }
@@ -896,9 +896,11 @@ void LagrangianHydroOperator::AssembleForceMatrix() const
    forcemat_is_assembled = true;
 }
 
-PressureFunction::PressureFunction(ParMesh &pmesh, ParGridFunction &rho0,
-                                   int e_order, mfem::ParGridFunction &gamma)
-   : p_fec_L2(p_order, pmesh.Dimension(), basis_type),
+PressureFunction::PressureFunction(ParMesh &pmesh, PressureSpace space,
+                                   ParGridFunction &rho0, int e_order,
+                                   ParGridFunction &gamma)
+   : p_space(space),
+     p_fec_L2(p_order, pmesh.Dimension(), basis_type),
      p_fec_H1(p_order, pmesh.Dimension(), basis_type),
      p_fes_L2(&pmesh, &p_fec_L2), p_fes_H1(&pmesh, &p_fec_H1),
      p_L2(&p_fes_L2), p_H1(&p_fes_H1),

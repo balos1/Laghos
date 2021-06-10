@@ -810,7 +810,7 @@ int main(int argc, char *argv[])
    // Integration of mass matrices.
    // true  -- the element mass matrices are integrated as mixed.
    // false -- the element mass matrices are integrated as pure.
-   bool mix_mass = false;
+   bool mix_mass = true;
    // 0 -- no shifting term.
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
@@ -826,7 +826,7 @@ int main(int argc, char *argv[])
 
    // optionally, a stability term can be added:
    // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
-   int e_shift_type = 1;
+   int e_shift_type = 0;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 

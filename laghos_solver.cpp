@@ -285,6 +285,7 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       // Interface forces.
       auto *ffi = new FaceForceIntegrator(p_func.GetPressure(), dist_coeff);
       FaceForce.AddTraceFaceIntegrator(ffi);
+      //FaceForce.AddFaceIntegrator(ffi);
 
       auto *efi = new EnergyInterfaceIntegrator(p_func.GetPressure(),
                                                 v_gf, dist_coeff, dt);

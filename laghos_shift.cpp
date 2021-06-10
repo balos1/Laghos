@@ -73,7 +73,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-  const int mode_TG = 1;
+  const int mode_TG = 2;
 
    switch (problem)
    {
@@ -81,7 +81,6 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
       {
          if (mode_TG == 0)
          {
-            const int glob_NE = pmesh.GetGlobalNE();
             // The domain area for the TG is 1.
             const double dx = sqrt(1.0 / glob_NE);
 
@@ -109,17 +108,16 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
       case 9: return tanh(x(0) - 0.7); // water-air.
       case 10:
       {
-         const int glob_NE = pmesh.GetGlobalNE();
          // The domain area for the 3point is 21.
-         //const double dx = sqrt(21.0 / glob_NE);
+         const double dx = sqrt(21.0 / glob_NE);
 
-         const int ref_levels = sqrt(glob_NE/ 21 / 4);
-         const double dx = (7/(7*pow(2., ref_levels*1.)));
+         //const int ref_levels = sqrt(glob_NE/ 21 / 4);
+         //const double dx = (7/(7*pow(2., ref_levels*1.)));
 
          // The middle of the element after x = 1.
          double waveloc = 1. + 0.5*dx;
 
-         waveloc = 1.1;
+         //waveloc = 1.1;
          return tanh(x(0) - waveloc);
       }
       default: MFEM_ABORT("error"); return 0.0;
@@ -174,6 +172,138 @@ void StrainTensorAtLocalDofs(ElementTransformation &T, const ParGridFunction &g,
    }
 }
 
+int LocVolumeDofID(int face_id, int loc_face_dof_id, int elem_id,
+                 ParFiniteElementSpace &fes)
+{
+   Array<int> el_dofs;
+   fes.GetElementDofs(elem_id, el_dofs);
+
+   Array<int> face_dofs;
+   fes.GetFaceDofs(face_id, face_dofs);
+
+   for (int i = 0; i < el_dofs.Size(); i++)
+   {
+      if (face_dofs[loc_face_dof_id] == el_dofs[i]) { return i; }
+   }
+
+   MFEM_ABORT("Can't find a volumetric dof_id for a face_dof_id.");
+   return -1;
+}
+
+void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
+                                             const FiniteElement &test_fe,
+                                             FaceElementTransformations &Trans,
+                                             DenseMatrix &elmat)
+{
+   const int h1dofs_cnt = trial_fe.GetDof();
+   const int l2dofs_cnt = test_fe.GetDof();
+   const int dim = test_fe.GetDim();
+
+   if (Trans.Elem2No < 0)
+   {
+      // This case should take care of shared (MPI) faces. They will get
+      // processed by both MPI tasks.
+      elmat.SetSize(l2dofs_cnt, h1dofs_cnt * dim);
+   }
+   else { elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt * dim * 2); }
+   elmat = 0.0;
+
+   // Must be done after elmat.SetSize().
+   if (Trans.Attribute != 77) { return; }
+
+   h1_shape.SetSize(h1dofs_cnt);
+   l2_shape.SetSize(l2dofs_cnt);
+
+   const int ir_order =
+      trial_fe.GetOrder() +test_fe.GetOrder() + Trans.OrderW();
+   const IntegrationRule *ir = &IntRules.Get(Trans.GetGeometryType(), ir_order);
+   const int nqp_face = ir->GetNPoints();
+
+   // grad_p at all DOFs of the pressure FE space, on both sides.
+   const FiniteElement &el_p = *p.ParFESpace()->GetFE(0);
+   const int dof_p = el_p.GetDof();
+   DenseMatrix p_grad_e_1(dof_p, dim), p_grad_e_2(dof_p, dim);
+   GradAtLocalDofs(Trans.GetElement1Transformation(), p, p_grad_e_1);
+   if (Trans.Elem2No > 0)
+   {
+      GradAtLocalDofs(Trans.GetElement2Transformation(), p, p_grad_e_2);
+   }
+
+   Vector nor(dim);
+
+   Vector p_grad_q(dim), d_q(dim), shape_p(dof_p);
+   for (int q = 0; q  < nqp_face; q++)
+   {
+      // Set the integration point in the face and the neighboring elements
+      const IntegrationPoint &ip_f = ir->IntPoint(q);
+      Trans.SetAllIntPoints(&ip_f);
+
+      // Access the neighboring elements' integration points
+      // Note: eip2 will only contain valid data if Elem2 exists
+      const IntegrationPoint &ip_e1 = Trans.GetElement1IntPoint();
+      const IntegrationPoint &ip_e2 = Trans.GetElement2IntPoint();
+
+      // The normal includes the Jac scaling.
+      // The orientation is taken into account in the processing of element 1.
+      if (dim == 1)
+      {
+         nor(0) = (2*ip_e1.x - 1.0) * Trans.Weight();
+      }
+      else { CalcOrtho(Trans.Jacobian(), nor); }
+      nor *= ip_f.weight;
+
+      // 1st element.
+      {
+         // Compute dist * grad_p in the first element.
+         el_p.CalcShape(ip_e1, shape_p);
+         p_grad_e_1.MultTranspose(shape_p, p_grad_q);
+         dist.Eval(d_q, Trans.GetElement1Transformation(), ip_e1);
+         const double grad_p_d = d_q * p_grad_q;
+
+         // Shape functions in the 1st element.
+         trial_fe.CalcShape(ip_e1, h1_shape);
+         test_fe.CalcShape(ip_e1, l2_shape);
+
+         for (int i = 0; i < l2dofs_cnt; i++)
+         {
+            for (int j = 0; j < h1dofs_cnt; j++)
+            {
+               for (int d = 0; d < dim; d++)
+               {
+                  elmat(i, d*h1dofs_cnt + j)
+                         += grad_p_d * l2_shape(i) * h1_shape(j) * nor(d);
+               }
+            }
+         }
+      }
+      // 2nd element if there is such (subtracting from the 1st).
+      if (Trans.Elem2No >= 0)
+      {
+         // Compute dist * grad_p in the second element.
+         el_p.CalcShape(ip_e2, shape_p);
+         p_grad_e_2.MultTranspose(shape_p, p_grad_q);
+         dist.Eval(d_q, Trans.GetElement2Transformation(), ip_e2);
+         const double grad_p_d = d_q * p_grad_q;
+
+         // L2 shape functions on the 2nd element.
+         trial_fe.CalcShape(ip_e2, h1_shape);
+         test_fe.CalcShape(ip_e2, l2_shape);
+
+         for (int i = 0; i < l2dofs_cnt; i++)
+         {
+            for (int j = 0; j < h1dofs_cnt; j++)
+            {
+               for (int d = 0; d < dim; d++)
+               {
+                  elmat(l2dofs_cnt + i, dim*h1dofs_cnt + d*h1dofs_cnt + j)
+                          -= grad_p_d * l2_shape(i) * h1_shape(j) * nor(d);
+               }
+            }
+         }
+      }
+   }
+}
+
 void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                                              const FiniteElement &test_fe1,
                                              const FiniteElement &test_fe2,
@@ -190,8 +320,9 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
       // processed by both MPI tasks.
       elmat.SetSize(l2dofs_cnt, h1dofs_cnt_face * dim);
    }
-   elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt_face * dim);
+   else { elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt_face * dim); }
    elmat = 0.0;
+   return;
 
    // Must be done after elmat.SetSize().
    if (Trans.Attribute != 77) { return; }
@@ -217,6 +348,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    Vector nor(dim);
 
    Vector p_grad_q(dim), d_q(dim), shape_p(dof_p);
+   //DenseMatrix h1_grads(h1_vol_fe->GetDof(), dim), grad_psi(dim);
    for (int q = 0; q  < nqp_face; q++)
    {
       const IntegrationPoint &ip_f = ir->IntPoint(q);
@@ -241,10 +373,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
       // Shape functions on the face (H1); same for both elements.
       trial_face_fe.CalcShape(ip_f, h1_shape_face);
 
-      const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
-      const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
-//      std::cout << p1 << " " << p2 << " " << p1-p2 << " k10p1p2\n";
-
       // + <[[grad p . d]], psi>
       // + <gradp1*d1*nor, psi> - <gradp2*d2*nor, psi>
       // We keep the positive sign here because in SolveVelocity(), this term
@@ -258,6 +386,9 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
          dist.Eval(d_q, Trans.GetElement1Transformation(), ip_e1);
          const double grad_p_d = d_q * p_grad_q;
 
+         // Compute dist * grad_psi in the first element
+         //h1_vol_fe->CalcPhysDShape(Trans.GetElement1Transformation(), h1_grads);
+
          // L2 shape functions in the 1st element.
          test_fe1.CalcShape(ip_e1, l2_shape);
 
@@ -269,6 +400,15 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                {
                   elmat(i, d*h1dofs_cnt_face + j)
                          += grad_p_d * l2_shape(i) * h1_shape_face(j) * nor(d);
+
+                  /*
+                  const int vol_j = LocVolumeDofID(Trans.ElementNo, j,
+                                                   Trans.Elem1No, pfes_h1);
+                  h1_grads.GetRow(vol_j, grad_psi);
+                  const double grad_p_psi = d_q * grad_psi;
+                  elmat(i, d*h1dofs_cnt_face + j)
+                         += grad_p_d * grad_p_psi * l2_shape(i)  * nod(d);
+                  */
                }
             }
          }
@@ -298,6 +438,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
          }
       }
    }
+
+   //delete h1_vol_fe;
 }
 
 void EnergyInterfaceIntegrator::AssembleRHSFaceVect(const FiniteElement &el_1,

@@ -38,20 +38,21 @@ class InterfaceCoeff : public Coefficient
 private:
    const int problem;
    const ParMesh &pmesh;
+   const int glob_NE;
 
 public:
    InterfaceCoeff(int prob, const ParMesh &pm)
-      : problem(prob), pmesh(pm) { }
+      : problem(prob), pmesh(pm), glob_NE(pm.GetGlobalNE()) { }
 
    virtual double Eval(ElementTransformation &T, const IntegrationPoint &ip);
 };
 
 // Performs full assemble for the force face terms:
-// F_face_ij = - int_face [ [grad_p * dist] * h1_shape_j l2_shape_i].
+// F_face_ij = < [grad_p.dist] * h1_shape_j * l2_shape_i >.
 class FaceForceIntegrator : public BilinearFormIntegrator
 {
 private:
-   Vector h1_shape_face, l2_shape;
+   Vector h1_shape_face, h1_shape, l2_shape;
    const ParGridFunction &p;
    VectorCoefficient &dist;
 
@@ -61,7 +62,13 @@ private:
    FaceForceIntegrator(const ParGridFunction &p_gf,
                        VectorCoefficient &d) : p(p_gf), dist(d)  { }
 
-   using BilinearFormIntegrator::AssembleFaceMatrix;
+   // Goes over all H1 volumetric dofs in both cells around the interface.
+   void AssembleFaceMatrix(const FiniteElement &trial_fe,
+                           const FiniteElement &test_fe,
+                           FaceElementTransformations &Trans,
+                           DenseMatrix &elmat);
+
+   // Goes over only the H1 dofs that are exactly on the interface.
    void AssembleFaceMatrix(const FiniteElement &trial_face_fe,
                            const FiniteElement &test_fe1,
                            const FiniteElement &test_fe2,

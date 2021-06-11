@@ -249,8 +249,8 @@ public:
       v_shift_type = vs_type;
       e_shift_type = es_type;
 
-      auto tfi_v = FaceForce.GetTFBFI();
-      //auto tfi_v = FaceForce.GetFBFI();
+      //auto tfi_v = FaceForce.GetTFBFI();
+      auto tfi_v = FaceForce.GetFBFI();
       auto v_integ = dynamic_cast<FaceForceIntegrator *>((*tfi_v)[0]);
       v_integ->SetShiftType(v_shift_type);
 

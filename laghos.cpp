@@ -806,17 +806,17 @@ int main(int argc, char *argv[])
    //
    // FE space for the pressure reconstruction.
    // L2 or H1.
-   PressureFunction::PressureSpace p_space = PressureFunction::H1;
+   PressureFunction::PressureSpace p_space = PressureFunction::L2;
    // Integration of mass matrices.
    // true  -- the element mass matrices are integrated as mixed.
    // false -- the element mass matrices are integrated as pure.
-   bool mix_mass = true;
+   bool mix_mass = false;
    // 0 -- no shifting term.
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
-   int v_shift_type = 1;
+   int v_shift_type = 2;
    // 0 -- no shifting terms.
-   // 1 -- the energy RHS gets the conservative moemntum term:
+   // 1 -- the energy RHS gets the conservative momentum term:
    //      + < [grad_p.d] v phi >                   for v_shift_type = 1.
    //      + < [grad_p.d * sum_i grad_vi.d] n phi > for v_shift_type = 2.
    // 2 -- - <[[((nabla v d) . n)n]], {{p phi}} + <v, phi[[\grad p . d]]>
@@ -826,7 +826,7 @@ int main(int argc, char *argv[])
 
    // optionally, a stability term can be added:
    // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
-   int e_shift_type = 0;
+   int e_shift_type = 1;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 
@@ -835,7 +835,8 @@ int main(int argc, char *argv[])
    {
       MFEM_VERIFY(nproc == 1, "The e terms are not parallel yet.");
    }
-   if (e_shift_type == 1) { MFEM_VERIFY(v_shift_type == 1, "doesn't match"); }
+   if (e_shift_type == 1) { MFEM_VERIFY(v_shift_type == 1 ||
+                                        v_shift_type == 2, "doesn't match"); }
 
 //#define EXTRACT_1D
    // Interface function.

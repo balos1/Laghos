@@ -111,13 +111,8 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
          // The domain area for the 3point is 21.
          const double dx = sqrt(21.0 / glob_NE);
 
-         //const int ref_levels = sqrt(glob_NE/ 21 / 4);
-         //const double dx = (7/(7*pow(2., ref_levels*1.)));
-
          // The middle of the element after x = 1.
-         double waveloc = 1. + 0.5*dx;
-
-         //waveloc = 1.1;
+         double waveloc = 1. + 0.75*dx;
          return tanh(x(0) - waveloc);
       }
       default: MFEM_ABORT("error"); return 0.0;
@@ -172,24 +167,6 @@ void StrainTensorAtLocalDofs(ElementTransformation &T, const ParGridFunction &g,
    }
 }
 
-int LocVolumeDofID(int face_id, int loc_face_dof_id, int elem_id,
-                 ParFiniteElementSpace &fes)
-{
-   Array<int> el_dofs;
-   fes.GetElementDofs(elem_id, el_dofs);
-
-   Array<int> face_dofs;
-   fes.GetFaceDofs(face_id, face_dofs);
-
-   for (int i = 0; i < el_dofs.Size(); i++)
-   {
-      if (face_dofs[loc_face_dof_id] == el_dofs[i]) { return i; }
-   }
-
-   MFEM_ABORT("Can't find a volumetric dof_id for a face_dof_id.");
-   return -1;
-}
-
 void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
                                              const FiniteElement &test_fe,
                                              FaceElementTransformations &Trans,
@@ -231,7 +208,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
 
    Vector nor(dim);
 
-   Vector p_grad_q(dim), d_q(dim), shape_p(dof_p);
+   Vector p_grad_q(dim), d_q(dim), shape_p(dof_p), grad_shape_h1(dim);
+   DenseMatrix h1_grads(h1dofs_cnt, dim);
    for (int q = 0; q  < nqp_face; q++)
    {
       // Set the integration point in the face and the neighboring elements
@@ -264,14 +242,24 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          trial_fe.CalcShape(ip_e1, h1_shape);
          test_fe.CalcShape(ip_e1, l2_shape);
 
+         // Compute dist * grad_psi in the first element
+         trial_fe.CalcPhysDShape(Trans.GetElement1Transformation(), h1_grads);
+
          for (int i = 0; i < l2dofs_cnt; i++)
          {
             for (int j = 0; j < h1dofs_cnt; j++)
             {
+               double h1_shape_part = h1_shape(j);
+               if (v_shift_type == 2)
+               {
+                  h1_grads.GetRow(j, grad_shape_h1);
+                  h1_shape_part = d_q * grad_shape_h1;
+               }
+
                for (int d = 0; d < dim; d++)
                {
                   elmat(i, d*h1dofs_cnt + j)
-                         += grad_p_d * l2_shape(i) * h1_shape(j) * nor(d);
+                        += grad_p_d * h1_shape_part * l2_shape(i) * nor(d);
                }
             }
          }
@@ -289,14 +277,24 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          trial_fe.CalcShape(ip_e2, h1_shape);
          test_fe.CalcShape(ip_e2, l2_shape);
 
+         // Compute dist * grad_psi in the second element
+         trial_fe.CalcPhysDShape(Trans.GetElement2Transformation(), h1_grads);
+
          for (int i = 0; i < l2dofs_cnt; i++)
          {
             for (int j = 0; j < h1dofs_cnt; j++)
             {
+               double h1_shape_part = h1_shape(j);
+               if (v_shift_type == 2)
+               {
+                  h1_grads.GetRow(j, grad_shape_h1);
+                  h1_shape_part = d_q * grad_shape_h1;
+               }
+
                for (int d = 0; d < dim; d++)
                {
                   elmat(l2dofs_cnt + i, dim*h1dofs_cnt + d*h1dofs_cnt + j)
-                          -= grad_p_d * l2_shape(i) * h1_shape(j) * nor(d);
+                        -= grad_p_d * h1_shape_part * l2_shape(i) * nor(d);
                }
             }
          }
@@ -322,7 +320,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_face_fe,
    }
    else { elmat.SetSize(l2dofs_cnt * 2, h1dofs_cnt_face * dim); }
    elmat = 0.0;
-   return;
 
    // Must be done after elmat.SetSize().
    if (Trans.Attribute != 77) { return; }

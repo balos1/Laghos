@@ -810,7 +810,7 @@ int main(int argc, char *argv[])
    // Integration of mass matrices.
    // true  -- the element mass matrices are integrated as mixed.
    // false -- the element mass matrices are integrated as pure.
-   bool mix_mass = false;
+   bool mix_mass = true;
    // 0 -- no shifting term.
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
@@ -1026,7 +1026,7 @@ int main(int argc, char *argv[])
    }
    MFEM_VERIFY(nproc == 1, "Point extraction works inly in serial.");
    const double dx = 1.0 / NE;
-   ParGridFunction &p_gf = hydro.GetPressure(e_gf);
+   ParGridFunction &pe_gf = hydro.GetPressure(e_gf);
    Vector point_interface(1), point_face(1);
    point_interface(0) = 0.5;
    if (problem == 9) { point_interface(0) = 0.7; }
@@ -1064,11 +1064,11 @@ int main(int argc, char *argv[])
    hydrodynamics::PointExtractor x_extr(zone_id_L, point_interface, x_gf, xname);
    hydrodynamics::PointExtractor e_L_extr(zone_id_L, point_face, e_gf, enamel);
    hydrodynamics::PointExtractor e_R_extr(zone_id_R, point_face, e_gf, enamer);
-   hydrodynamics::PointExtractor p_L_extr(zone_id_L, point_face, p_gf, pnamefitl);
-   hydrodynamics::PointExtractor p_R_extr(zone_id_R, point_face, p_gf, pnamefitr);
-   hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, p_gf,
+   hydrodynamics::PointExtractor p_L_extr(zone_id_L, point_face, pe_gf, pnamefitl);
+   hydrodynamics::PointExtractor p_R_extr(zone_id_R, point_face, pe_gf, pnamefitr);
+   hydrodynamics::ShiftedPointExtractor p_LS_extr(zone_id_L, point_face, pe_gf,
                                                   dist, pnameshiftl);
-   hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, p_gf,
+   hydrodynamics::ShiftedPointExtractor p_RS_extr(zone_id_R, point_face, pe_gf,
                                                   dist, pnameshiftr);
    v_extr.WriteValue(0.0);
    x_extr.WriteValue(0.0);

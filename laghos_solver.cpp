@@ -614,6 +614,18 @@ double LagrangianHydroOperator::KineticEnergy(const ParGridFunction &v) const
    return 0.5*glob_ke;
 }
 
+double LagrangianHydroOperator::Momentum(const ParGridFunction &v) const
+{
+   Vector one(Mv_spmat_copy.Height());
+   one = 1.0;
+   double loc_m = Mv_spmat_copy.InnerProduct(one, v);
+
+   double glob_m;
+   MPI_Allreduce(&loc_m, &glob_m, 1, MPI_DOUBLE, MPI_SUM,
+                 H1.GetParMesh()->GetComm());
+   return glob_m;
+}
+
 void LagrangianHydroOperator::PrintTimingData(bool IamRoot, int steps,
                                               const bool fom) const
 {

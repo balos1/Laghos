@@ -237,6 +237,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          p_grad_e_1.MultTranspose(shape_p, p_grad_q);
          dist.Eval(d_q, Trans.GetElement1Transformation(), ip_e1);
          const double grad_p_d = d_q * p_grad_q;
+         const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
 
          // Shape functions in the 1st element.
          trial_fe.CalcShape(ip_e1, h1_shape);
@@ -245,21 +246,25 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          // Compute dist * grad_psi in the first element
          trial_fe.CalcPhysDShape(Trans.GetElement1Transformation(), h1_grads);
 
+         // TODO reorder/optimize loops.
          for (int i = 0; i < l2dofs_cnt; i++)
          {
             for (int j = 0; j < h1dofs_cnt; j++)
             {
                double h1_shape_part = h1_shape(j);
-               if (v_shift_type == 2)
+               if (v_shift_type == 2 || v_shift_type == 3)
                {
                   h1_grads.GetRow(j, grad_shape_h1);
                   h1_shape_part = d_q * grad_shape_h1;
                }
+               double p_shift_part = (v_shift_type == 3) ? p1 + grad_p_d
+                                                         : grad_p_d;
+               p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)
                {
                   elmat(i, d*h1dofs_cnt + j)
-                        += grad_p_d * h1_shape_part * l2_shape(i) * nor(d);
+                        += p_shift_part * h1_shape_part * l2_shape(i) * nor(d);
                }
             }
          }
@@ -272,6 +277,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          p_grad_e_2.MultTranspose(shape_p, p_grad_q);
          dist.Eval(d_q, Trans.GetElement2Transformation(), ip_e2);
          const double grad_p_d = d_q * p_grad_q;
+         const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
 
          // L2 shape functions on the 2nd element.
          trial_fe.CalcShape(ip_e2, h1_shape);
@@ -280,21 +286,25 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          // Compute dist * grad_psi in the second element
          trial_fe.CalcPhysDShape(Trans.GetElement2Transformation(), h1_grads);
 
+         // TODO reorder/optimize loops.
          for (int i = 0; i < l2dofs_cnt; i++)
          {
             for (int j = 0; j < h1dofs_cnt; j++)
             {
                double h1_shape_part = h1_shape(j);
-               if (v_shift_type == 2)
+               if (v_shift_type == 2 || v_shift_type == 3)
                {
                   h1_grads.GetRow(j, grad_shape_h1);
                   h1_shape_part = d_q * grad_shape_h1;
                }
+               double p_shift_part = (v_shift_type == 3) ? p2 + grad_p_d
+                                                         : grad_p_d;
+               p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)
                {
                   elmat(l2dofs_cnt + i, dim*h1dofs_cnt + d*h1dofs_cnt + j)
-                        -= grad_p_d * h1_shape_part * l2_shape(i) * nor(d);
+                        -= p_shift_part * h1_shape_part * l2_shape(i) * nor(d);
                }
             }
          }

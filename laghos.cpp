@@ -810,23 +810,26 @@ int main(int argc, char *argv[])
    // Integration of mass matrices.
    // true  -- the element mass matrices are integrated as mixed.
    // false -- the element mass matrices are integrated as pure.
-   bool mix_mass = true;
+   bool mix_mass = false;
    // 0 -- no shifting term.
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
-   int v_shift_type = 2;
+   // 3 -- the momentum RHS gets this term:  - < [(p + grad_p.d) * grad_psi.d] n >
+   int v_shift_type = 3;
    // 0 -- no shifting terms.
    // 1 -- the energy RHS gets the conservative momentum term:
-   //      + < [grad_p.d] v phi >                   for v_shift_type = 1.
-   //      + < [grad_p.d * sum_i grad_vi.d] n phi > for v_shift_type = 2.
+   //      + < [grad_p.d] v phi >                         for v_shift_type = 1.
+   //      + < [grad_p.d * sum_i grad_vi.d] n phi >       for v_shift_type = 2.
+   //      + < [(p + grad_p.d) * sum_i grad_vi.d] n phi > for v_shift_type = 3.
    // 2 -- - <[[((nabla v d) . n)n]], {{p phi}} + <v, phi[[\grad p . d]]>
    //T3 -- - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]>  + <v, phi[[\grad p . d]]>
    //G4 -- - <[[((nabla v d) . n)n]], {{p phi}}
    //N5 -- - <[[((nabla v d) . n)n]], {{p}}{{phi}} - (1-gamma)(gamma)[[nabla p. d]].[[nabla phi]]> - < {v},{phi}[[p + nabla p . d]]>
-
    // optionally, a stability term can be added:
    // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
    int e_shift_type = 1;
+   // Scaling of both shifting terms.
+   double shift_scale = 0.25;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 
@@ -835,10 +838,14 @@ int main(int argc, char *argv[])
    {
       MFEM_VERIFY(nproc == 1, "The e terms are not parallel yet.");
    }
-   if (e_shift_type == 1) { MFEM_VERIFY(v_shift_type == 1 ||
-                                        v_shift_type == 2, "doesn't match"); }
+   if (e_shift_type == 1)
+   {
+      MFEM_VERIFY(v_shift_type == 1 || v_shift_type == 2 || v_shift_type == 3,
+                 "doesn't match");
+   }
 
 //#define EXTRACT_1D
+
    // Interface function.
    ParFiniteElementSpace pfes_xi(pmesh, &H1FEC);
    ParGridFunction xi(&pfes_xi);
@@ -923,7 +930,7 @@ int main(int argc, char *argv[])
                                                 visc, vorticity, p_assembly,
                                                 cg_tol, cg_max_iter, ftz_tol,
                                                 order_q, &dt);
-   hydro.SetShiftingOptions(problem, v_shift_type, e_shift_type);
+   hydro.SetShiftingOptions(problem, v_shift_type, e_shift_type, shift_scale);
 
    socketstream vis_rho, vis_v, vis_e, vis_p, vis_xi, vis_dist, vis_mat;
    char vishost[] = "localhost";
@@ -948,7 +955,7 @@ int main(int argc, char *argv[])
       vis_dist.precision(8);
       vis_mat.precision(8);
       int Wx = 0, Wy = 0; // window position
-      const int Ww = 350, Wh = 350; // window size
+      const int Ww = 500, Wh = 500; // window size
       int offx = Ww + 10; // window offsets
       if (problem != 0 && problem != 4)
       {
@@ -961,14 +968,17 @@ int main(int argc, char *argv[])
       Wx += offx;
       hydrodynamics::VisualizeField(vis_e, vishost, visport, e_gf,
                                     "Specific Internal Energy", Wx, Wy, Ww, Wh);
-
+      Wy += Wh + Wh/5;
+      Wx = 0;
       hydrodynamics::VisualizeField(vis_p, vishost, visport,
                                     hydro.GetPressure(e_gf),
-                                    "Pressure", 0, 400, Ww, Wh);
+                                    "Pressure", Wx, Wy, Ww, Wh);
+      Wx += offx;
       hydrodynamics::VisualizeField(vis_xi, vishost, visport, xi,
-                                    "Interface", 400, 400, Ww, Wh);
+                                    "Interface", Wx, Wy, Ww, Wh);
+      Wx += offx;
       hydrodynamics::VisualizeField(vis_dist, vishost, visport, dist,
-                                    "Distances", 800, 400, Ww, Wh);
+                                    "Distances", Wx, Wy, Ww, Wh);
       hydrodynamics::VisualizeField(vis_mat, vishost, visport, materials,
                                     "Materials", 0, 0, Ww, Wh);
    }
@@ -1036,19 +1046,19 @@ int main(int argc, char *argv[])
    std::cout << point_interface(0) << " " << point_face(0) <<  std::endl;
    hydrodynamics::PrintCellNumbers(point_interface, H1FESpace);
    hydrodynamics::PrintCellNumbers(point_face, L2FESpace);
-   //MFEM_ABORT("numbers");
    // By construction, the interface is in the left zone.
-   std::string vname, xname, pnameshiftl, pnameshiftr, pnamefitl, pnamefitr, enamel, enamer;
+   std::string vname, xname, pnameshiftl, pnameshiftr,
+               pnamefitl, pnamefitr, enamel, enamer;
 
    if (problem != 9) {
        vname = "sod_v_" + std::to_string(zones) + ".out";
        xname = "sod_x_" + std::to_string(zones) + ".out";
-       enamel = "sod_e_" + std::to_string(zones) + "_l.out";
-       enamer = "sod_e_" + std::to_string(zones) + "_r.out";
-       pnameshiftl = "sod_p_" + std::to_string(zones) + "_shift_l.out";
-       pnameshiftr = "sod_p_" + std::to_string(zones) + "_shift_r.out";
-       pnamefitl = "sod_p_" + std::to_string(zones) + "_fit_l.out";
-       pnamefitr = "sod_p_" + std::to_string(zones) + "_fit_r.out";
+       enamel = "sod_e_" + std::to_string(zones) + "_L.out";
+       enamer = "sod_e_" + std::to_string(zones) + "_R.out";
+       pnameshiftl = "sod_p_" + std::to_string(zones) + "_shift_L.out";
+       pnameshiftr = "sod_p_" + std::to_string(zones) + "_shift_R.out";
+       pnamefitl = "sod_p_" + std::to_string(zones) + "_fit_L.out";
+       pnamefitr = "sod_p_" + std::to_string(zones) + "_fit_R.out";
    }
    else {
        vname = "airwater_v_" + std::to_string(zones) + ".out";
@@ -1073,11 +1083,13 @@ int main(int argc, char *argv[])
                                                   dist, pnameshiftr);
    v_extr.WriteValue(0.0);
    x_extr.WriteValue(0.0);
-   if (v_shift_type == 0 && e_shift_type == 0) {
+   if (v_shift_type == 0 && e_shift_type == 0)
+   {
        p_L_extr.WriteValue(0.0);
-        p_R_extr.WriteValue(0.0);
+       p_R_extr.WriteValue(0.0);
    }
-   else {
+   else
+   {
        p_LS_extr.WriteValue(0.0);
        p_RS_extr.WriteValue(0.0);
    }
@@ -1139,11 +1151,13 @@ int main(int argc, char *argv[])
       x_extr.WriteValue(t);
       e_L_extr.WriteValue(t);
       e_R_extr.WriteValue(t);
-      if (v_shift_type == 0 && e_shift_type == 0) {
+      if (v_shift_type == 0 && e_shift_type == 0)
+      {
           p_L_extr.WriteValue(t);
           p_R_extr.WriteValue(t);
       }
-      else {
+      else
+      {
           p_LS_extr.WriteValue(t);
           p_RS_extr.WriteValue(t);
       }
@@ -1199,7 +1213,7 @@ int main(int argc, char *argv[])
          if (visualization)
          {
             int Wx = 0, Wy = 0; // window position
-            int Ww = 350, Wh = 350; // window size
+            int Ww = 500, Wh = 500; // window size
             int offx = Ww+10; // window offsets
             if (problem != 0 && problem != 4)
             {
@@ -1213,14 +1227,17 @@ int main(int argc, char *argv[])
             hydrodynamics::VisualizeField(vis_e, vishost, visport, e_gf,
                                           "Specific Internal Energy",
                                           Wx, Wy, Ww,Wh);
-
+            Wy += Wh + Wh/5;
+            Wx = 0;
             hydrodynamics::VisualizeField(vis_p, vishost, visport,
                                           hydro.GetPressure(e_gf),
-                                          "Pressure", 0, 400, Ww, Wh);
+                                          "Pressure", Wx, Wy, Ww, Wh);
+            Wx += offx;
             hydrodynamics::VisualizeField(vis_xi, vishost, visport,
-                                          xi, "Interface", 400, 400, Ww, Wh);
+                                          xi, "Interface", Wx, Wy, Ww, Wh);
+            Wx += offx;
             hydrodynamics::VisualizeField(vis_dist, vishost, visport, dist,
-                                          "Distances", 800, 400, Ww, Wh);
+                                          "Distances", Wx, Wy, Ww, Wh);
             hydrodynamics::VisualizeField(vis_mat, vishost, visport, materials,
                                           "Materials", 0, 800, Ww, Wh);
          }

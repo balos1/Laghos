@@ -57,6 +57,7 @@ private:
    VectorCoefficient &dist;
 
    int v_shift_type = 0;
+   double scale = 1.0;
 
   public:
    FaceForceIntegrator(const ParGridFunction &p_gf,
@@ -76,6 +77,7 @@ private:
                            DenseMatrix &elmat);
 
    void SetShiftType(int type) { v_shift_type = type; }
+   void SetScale(double s) { scale = s; }
 };
 
 class EnergyInterfaceIntegrator : public LinearFormIntegrator

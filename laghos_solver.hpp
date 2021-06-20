@@ -242,7 +242,7 @@ public:
    void ResetTimeStepEstimate() const;
    void ResetQuadratureData() const { qdata_is_current = false; }
 
-   void SetShiftingOptions(int problem, int vs_type, int es_type)
+   void SetShiftingOptions(int problem, int vs_type, int es_type, double scale)
    {
       p_func.SetProblem(problem);
 
@@ -253,6 +253,7 @@ public:
       auto tfi_v = FaceForce.GetFBFI();
       auto v_integ = dynamic_cast<FaceForceIntegrator *>((*tfi_v)[0]);
       v_integ->SetShiftType(v_shift_type);
+      v_integ->SetScale(scale);
 
       auto tfi = FaceForce_e.GetTLFI();
       auto en_integ = dynamic_cast<EnergyInterfaceIntegrator *>((*tfi)[0]);

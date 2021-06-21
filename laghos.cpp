@@ -815,6 +815,7 @@ int main(int argc, char *argv[])
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
    // 3 -- the momentum RHS gets this term:  - < [(p + grad_p.d) * grad_psi.d] n >
+   // 4 -- the momentum RHS gets this term:  - < [(p + grad_p.d)] [p+grad_psi.d] n >
    int v_shift_type = 4;
    // 0 -- no shifting terms.
    // 1 -- the energy RHS gets the conservative momentum term:
@@ -829,7 +830,7 @@ int main(int argc, char *argv[])
    // + (dt / h) * [[ p + grad p . d ]], [[ phi + grad phi . d]]
    int e_shift_type = 1;
    // Scaling of both shifting terms.
-   double shift_scale = 0.25;
+   double shift_scale = 0.1;
 
    const bool calc_dist = (v_shift_type > 0 || e_shift_type > 0) ? true : false;
 

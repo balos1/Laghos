@@ -292,6 +292,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
                                                          : grad_p_d1;
                if (v_shift_type == 4) {
                    p_shift_part -= (p2 + grad_p_d2);
+
+                   h1_shape_part += h1_shape(j);
                }
                p_shift_part *= scale;
 
@@ -329,6 +331,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
                if (v_shift_type == 4) {
                    p_shift_part -= (p1 + grad_p_d1);
                    p_shift_part *= -1;
+                   h1_shape_part += h1_shape(j);
                }
 
                p_shift_part *= scale;

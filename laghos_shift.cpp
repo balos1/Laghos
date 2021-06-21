@@ -47,17 +47,31 @@ int material_id(int el_id, const ParGridFunction &g)
    //return (integral > 0.0) ? 1 : 0;
 }
 
-void MarkFaceAttributes(ParMesh &pmesh)
+void MarkFaceAttributes(ParFiniteElementSpace &pfes)
 {
+   ParMesh *pmesh = pfes.GetParMesh();
+   pmesh->ExchangeFaceNbrNodes();
    // Set face_attribute = 77 to faces that are on the material interface.
-   for (int f = 0; f < pmesh.GetNumFaces(); f++)
+   for (int f = 0; f < pmesh->GetNumFaces(); f++)
    {
-      auto *ftr = pmesh.GetFaceElementTransformations(f, 3);
+      auto *ftr = pmesh->GetFaceElementTransformations(f, 3);
       if (ftr->Elem2No > 0 &&
-          pmesh.GetAttribute(ftr->Elem1No) != pmesh.GetAttribute(ftr->Elem2No))
+          pmesh->GetAttribute(ftr->Elem1No) != pmesh->GetAttribute(ftr->Elem2No))
       {
-         pmesh.SetFaceAttribute(f, 77);
+         pmesh->SetFaceAttribute(f, 77);
       }
+   }
+   for (int f = 0; f < pmesh->GetNSharedFaces(); f++) {
+       auto *ftr = pmesh->GetSharedFaceTransformations(f, 3);
+       int faceno = pmesh->GetSharedFace(f);
+       int Elem1no = ftr->Elem1No;
+       int Elem2NbrNo = ftr->Elem2No - pmesh->GetNE();
+       auto *nbrftr = pfes.GetFaceNbrElementTransformation(Elem2NbrNo);
+       int attr1 = pmesh->GetAttribute(ftr->Elem1No);
+       int attr2 = nbrftr->Attribute;
+       if (attr1 != attr2) {
+           pmesh->SetFaceAttribute(faceno, 77);
+       }
    }
 }
 
@@ -73,7 +87,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-  const int mode_TG = 2;
+  const int mode_TG = 1;
 
    switch (problem)
    {
@@ -175,6 +189,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
    const int h1dofs_cnt = trial_fe.GetDof();
    const int l2dofs_cnt = test_fe.GetDof();
    const int dim = test_fe.GetDim();
+   int nor_dir_mask = 1;
 
    if (Trans.Elem2No < 0)
    {
@@ -187,6 +202,11 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
 
    // Must be done after elmat.SetSize().
    if (Trans.Attribute != 77) { return; }
+
+   if (Trans.Elem2No < 0 && Trans.Attribute == 77)
+   {
+       nor_dir_mask = nordir[Trans.FaceNo];
+   }
 
    h1_shape.SetSize(h1dofs_cnt);
    l2_shape.SetSize(l2dofs_cnt);
@@ -208,7 +228,8 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
 
    Vector nor(dim);
 
-   Vector p_grad_q(dim), d_q(dim), shape_p(dof_p), grad_shape_h1(dim);
+   Vector p_grad_q1(dim), d_q1(dim), shape_p1(dof_p), grad_shape_h1(dim);
+   Vector p_grad_q2(dim), d_q2(dim), shape_p2(dof_p);
    DenseMatrix h1_grads(h1dofs_cnt, dim);
    for (int q = 0; q  < nqp_face; q++)
    {
@@ -228,17 +249,27 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
          nor(0) = (2*ip_e1.x - 1.0) * Trans.Weight();
       }
       else { CalcOrtho(Trans.Jacobian(), nor); }
+      if (Trans.Elem2No < 0 && Trans.Attribute == 77)
+      {
+          // nor *= nor_dir_mask;
+      }
       nor *= ip_f.weight;
+
+      el_p.CalcShape(ip_e1, shape_p1);
+      p_grad_e_1.MultTranspose(shape_p1, p_grad_q1);
+      dist.Eval(d_q1, Trans.GetElement1Transformation(), ip_e1);
+      const double grad_p_d1 = d_q1 * p_grad_q1;
+      const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
+
+      el_p.CalcShape(ip_e2, shape_p2);
+      p_grad_e_2.MultTranspose(shape_p2, p_grad_q2);
+      dist.Eval(d_q2, Trans.GetElement2Transformation(), ip_e2);
+      const double grad_p_d2 = d_q2 * p_grad_q2;
+      const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
+
 
       // 1st element.
       {
-         // Compute dist * grad_p in the first element.
-         el_p.CalcShape(ip_e1, shape_p);
-         p_grad_e_1.MultTranspose(shape_p, p_grad_q);
-         dist.Eval(d_q, Trans.GetElement1Transformation(), ip_e1);
-         const double grad_p_d = d_q * p_grad_q;
-         const double p1 = p.GetValue(Trans.GetElement1Transformation(), ip_e1);
-
          // Shape functions in the 1st element.
          trial_fe.CalcShape(ip_e1, h1_shape);
          test_fe.CalcShape(ip_e1, l2_shape);
@@ -252,13 +283,16 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
             for (int j = 0; j < h1dofs_cnt; j++)
             {
                double h1_shape_part = h1_shape(j);
-               if (v_shift_type == 2 || v_shift_type == 3)
+               if (v_shift_type == 2 || v_shift_type == 3 || v_shift_type == 4)
                {
                   h1_grads.GetRow(j, grad_shape_h1);
-                  h1_shape_part = d_q * grad_shape_h1;
+                  h1_shape_part = d_q1 * grad_shape_h1;
                }
-               double p_shift_part = (v_shift_type == 3) ? p1 + grad_p_d
-                                                         : grad_p_d;
+               double p_shift_part = (v_shift_type == 3 || v_shift_type == 4) ? p1 + grad_p_d1
+                                                         : grad_p_d1;
+               if (v_shift_type == 4) {
+                   p_shift_part -= (p2 + grad_p_d2);
+               }
                p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)
@@ -272,13 +306,6 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
       // 2nd element if there is such (subtracting from the 1st).
       if (Trans.Elem2No >= 0)
       {
-         // Compute dist * grad_p in the second element.
-         el_p.CalcShape(ip_e2, shape_p);
-         p_grad_e_2.MultTranspose(shape_p, p_grad_q);
-         dist.Eval(d_q, Trans.GetElement2Transformation(), ip_e2);
-         const double grad_p_d = d_q * p_grad_q;
-         const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
-
          // L2 shape functions on the 2nd element.
          trial_fe.CalcShape(ip_e2, h1_shape);
          test_fe.CalcShape(ip_e2, l2_shape);
@@ -292,13 +319,18 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
             for (int j = 0; j < h1dofs_cnt; j++)
             {
                double h1_shape_part = h1_shape(j);
-               if (v_shift_type == 2 || v_shift_type == 3)
+               if (v_shift_type == 2 || v_shift_type == 3 || v_shift_type == 4)
                {
                   h1_grads.GetRow(j, grad_shape_h1);
-                  h1_shape_part = d_q * grad_shape_h1;
+                  h1_shape_part = d_q2 * grad_shape_h1;
                }
-               double p_shift_part = (v_shift_type == 3) ? p2 + grad_p_d
-                                                         : grad_p_d;
+               double p_shift_part = (v_shift_type == 3 || v_shift_type == 4) ? p2 + grad_p_d2
+                                                         : grad_p_d2;
+               if (v_shift_type == 4) {
+                   p_shift_part -= (p1 + grad_p_d1);
+                   p_shift_part *= -1;
+               }
+
                p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)

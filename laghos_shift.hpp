@@ -30,7 +30,7 @@ int multi_material_id(int el_id, const ParGridFunction &xgf);
 
 //double interfaceLS(const Vector &x);
 
-void MarkFaceAttributes(ParMesh &pmesh);
+void MarkFaceAttributes(ParFiniteElementSpace &pfes);
 
 // Specifies the material interface, depending on the problem number.
 class InterfaceCoeff : public Coefficient
@@ -55,13 +55,15 @@ private:
    Vector h1_shape_face, h1_shape, l2_shape;
    const ParGridFunction &p;
    VectorCoefficient &dist;
+   Array<int> nordir;
 
    int v_shift_type = 0;
    double scale = 1.0;
 
   public:
    FaceForceIntegrator(const ParGridFunction &p_gf,
-                       VectorCoefficient &d) : p(p_gf), dist(d)  { }
+                       VectorCoefficient &d,
+                       Array<int> nordir_) : p(p_gf), dist(d), nordir(nordir_) { }
 
    // Goes over all H1 volumetric dofs in both cells around the interface.
    void AssembleFaceMatrix(const FiniteElement &trial_fe,

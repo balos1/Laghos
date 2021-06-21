@@ -815,7 +815,7 @@ int main(int argc, char *argv[])
    // 1 -- the momentum RHS gets this term:  - < [grad_p.d] psi >
    // 2 -- the momentum RHS gets this term:  - < [grad_p.d * grad_psi.d] n >
    // 3 -- the momentum RHS gets this term:  - < [(p + grad_p.d) * grad_psi.d] n >
-   int v_shift_type = 3;
+   int v_shift_type = 4;
    // 0 -- no shifting terms.
    // 1 -- the energy RHS gets the conservative momentum term:
    //      + < [grad_p.d] v phi >                         for v_shift_type = 1.
@@ -840,7 +840,7 @@ int main(int argc, char *argv[])
    }
    if (e_shift_type == 1)
    {
-      MFEM_VERIFY(v_shift_type == 1 || v_shift_type == 2 || v_shift_type == 3,
+      MFEM_VERIFY(v_shift_type >= 1 || v_shift_type <= 4,
                  "doesn't match");
    }
 
@@ -867,7 +867,7 @@ int main(int argc, char *argv[])
          zone_id_R = i;
       }
    }
-   hydrodynamics::MarkFaceAttributes(*pmesh);
+   hydrodynamics::MarkFaceAttributes(pfes_xi);
    // Distance vector.
    ParGridFunction dist(&H1FESpace);
    VectorGridFunctionCoefficient dist_coeff(&dist);

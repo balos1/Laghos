@@ -282,8 +282,29 @@ LagrangianHydroOperator::LagrangianHydroOperator(const int size,
       fi->SetIntRule(&ir);
       Force.AddDomainIntegrator(fi);
 
+      H1.ExchangeFaceNbrData();
+      Array<int> nor_dir_mask(H1.GetParMesh()->GetNumFaces());
+      nor_dir_mask = 1;
+      for (int i = 0; i < H1.GetParMesh()->GetNSharedFaces(); i++) {
+          FaceElementTransformations *T = H1.GetParMesh()->GetSharedFaceTransformations(i);
+          int Elem1 = T->Elem1No;
+          int Elem2 = T->Elem2No - H1.GetParMesh()->GetNE();
+          int faceno = H1.GetParMesh()->GetSharedFace(i);
+          const HYPRE_Int *face_nbr_glob_ldof = H1.GetFaceNbrGlobalDofMap();
+          HYPRE_Int ldof_offset = H1.GetMyDofOffset();
+          Array<int> vdofs;
+          Array<int> nbr_vdofs;
+          H1.GetFaceNbrElementVDofs(Elem2, nbr_vdofs);
+          H1.GetElementVDofs(Elem1, vdofs);
+          int globdof1 = vdofs[0]+ldof_offset;
+          int globdof2 = face_nbr_glob_ldof[nbr_vdofs[0]];
+          if (globdof1 < globdof2) {
+              nor_dir_mask[faceno] = -1;
+          }
+      }
+
       // Interface forces.
-      auto *ffi = new FaceForceIntegrator(p_func.GetPressure(), dist_coeff);
+      auto *ffi = new FaceForceIntegrator(p_func.GetPressure(), dist_coeff, nor_dir_mask);
       //FaceForce.AddTraceFaceIntegrator(ffi);
       FaceForce.AddFaceIntegrator(ffi);
 
@@ -413,7 +434,9 @@ void LagrangianHydroOperator::SolveVelocity(const Vector &S,
 
       // This Force object is l2_dofs x h1_dofs (transpose of the paper one).
       Force.MultTranspose(one, rhs);
-      if (v_shift_type == 1) { FaceForce.AddMultTranspose(one, rhs, 1.0); }
+      if (v_shift_type >= 1 && v_shift_type <= 4) {
+          FaceForce.AddMultTranspose(one, rhs, 1.0);
+      }
 
       timer.sw_force.Stop();
       rhs.Neg();

@@ -87,7 +87,7 @@ double InterfaceCoeff::Eval(ElementTransformation &T,
    // 0 - vertical
    // 1 - diagonal
    // 2 - circle
-  const int mode_TG = 1;
+  const int mode_TG = 2;
 
    switch (problem)
    {
@@ -205,7 +205,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
 
    if (Trans.Elem2No < 0 && Trans.Attribute == 77)
    {
-       nor_dir_mask = nordir[Trans.FaceNo];
+      // nor_dir_mask = nordir[Trans.FaceNo];
    }
 
    h1_shape.SetSize(h1dofs_cnt);
@@ -267,6 +267,7 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
       const double grad_p_d2 = d_q2 * p_grad_q2;
       const double p2 = p.GetValue(Trans.GetElement2Transformation(), ip_e2);
 
+      const double p_shift_jump = p1 + grad_p_d1 - p2 - grad_p_d2;
 
       // 1st element.
       {
@@ -288,13 +289,10 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
                   h1_grads.GetRow(j, grad_shape_h1);
                   h1_shape_part = d_q1 * grad_shape_h1;
                }
-               double p_shift_part = (v_shift_type == 3 || v_shift_type == 4) ? p1 + grad_p_d1
-                                                         : grad_p_d1;
-               if (v_shift_type == 4) {
-                   p_shift_part -= (p2 + grad_p_d2);
 
-                   h1_shape_part += h1_shape(j);
-               }
+               double p_shift_part = grad_p_d1;
+               if (v_shift_type == 3) { p_shift_part += p1; }
+               if (v_shift_type == 4) { p_shift_part  = p_shift_jump; }
                p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)
@@ -326,14 +324,10 @@ void FaceForceIntegrator::AssembleFaceMatrix(const FiniteElement &trial_fe,
                   h1_grads.GetRow(j, grad_shape_h1);
                   h1_shape_part = d_q2 * grad_shape_h1;
                }
-               double p_shift_part = (v_shift_type == 3 || v_shift_type == 4) ? p2 + grad_p_d2
-                                                         : grad_p_d2;
-               if (v_shift_type == 4) {
-                   p_shift_part -= (p1 + grad_p_d1);
-                   p_shift_part *= -1;
-                   h1_shape_part += h1_shape(j);
-               }
 
+               double p_shift_part = grad_p_d2;
+               if (v_shift_type == 3) { p_shift_part += p2; }
+               if (v_shift_type == 4) { p_shift_part  = p_shift_jump; }
                p_shift_part *= scale;
 
                for (int d = 0; d < dim; d++)
